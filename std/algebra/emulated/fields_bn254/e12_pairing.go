@@ -222,7 +222,7 @@ func (e Ext12) DecompressTorus(y *E6) *E12 {
 
 // MulTorus multiplies two compressed elements y1, y2 ∈ E6
 // and returns (y1 * y2 + v)/(y1 + y2)
-// N.B.: we use MulTorus in the final exponentiation throughout y1 ≠ -y2 always.
+// N.B.: we use MulTorus throughout the final exponentiation where always y1 ≠ -y2
 func (e Ext12) MulTorus(y1, y2 *E6) *E6 {
 	n := e.Ext6.Mul(y1, y2)
 	n.B1 = *e.Ext2.Add(&n.B1, e.Ext2.One())

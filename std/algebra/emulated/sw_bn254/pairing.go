@@ -132,10 +132,14 @@ func (pr Pairing) FinalExponentiationUnsafe(e *GTEl) *GTEl {
 //
 // finalExponentiation returns a decompressed element in E12
 func (pr Pairing) finalExponentiation(e *GTEl, unsafe bool) *GTEl {
+	res, selector1 := pr.easyPart(e, unsafe)
+	return pr.HardPart(res, selector1, unsafe)
+}
 
-	// 1. Easy part
-	// (p⁶-1)(p²+1)
-	var selector1, selector2 frontend.Variable
+// 1. Easy part
+// (p⁶-1)(p²+1)
+func (pr Pairing) easyPart(e *GTEl, unsafe bool) (*fields_bn254.E6, frontend.Variable) {
+	var selector1 frontend.Variable
 	_dummy := pr.Ext6.One()
 
 	if unsafe {
@@ -163,13 +167,19 @@ func (pr Pairing) finalExponentiation(e *GTEl, unsafe bool) *GTEl {
 	t0 := pr.FrobeniusSquareTorus(c)
 	c = pr.MulTorus(t0, c)
 
-	// 2. Hard part (up to permutation)
-	// 2x₀(6x₀²+3x₀+1)(p⁴-p²+1)/r
-	// Duquesne and Ghammam
-	// https://eprint.iacr.org/2015/192.pdf
-	// Fuentes et al. (alg. 6)
-	// performed in torus compressed form
-	t0 = pr.ExptTorus(c)
+	return c, selector1
+}
+
+// 2. Hard part (up to permutation)
+// 2x₀(6x₀²+3x₀+1)(p⁴-p²+1)/r
+// Duquesne and Ghammam
+// https://eprint.iacr.org/2015/192.pdf
+// Fuentes et al. (alg. 6)
+// performed in torus compressed form
+func (pr Pairing) HardPart(c *fields_bn254.E6, selector1 frontend.Variable, unsafe bool) *GTEl {
+	var selector2 frontend.Variable
+	_dummy := pr.Ext6.One()
+	t0 := pr.ExptTorus(c)
 	t0 = pr.InverseTorus(t0)
 	t0 = pr.SquareTorus(t0)
 	t1 := pr.SquareTorus(t0)
@@ -202,7 +212,7 @@ func (pr Pairing) finalExponentiation(e *GTEl, unsafe bool) *GTEl {
 		// For a product of pairings this might happen when the result is expected to be 1.
 		// We assign a dummy value (1) to t0 and proceed furhter.
 		// Finally we do a select on both edge cases:
-		//   - Only if seletor1=0 and selector2=0, we return MulTorus(t2, t0) decompressed.
+		//   - Only if selector1=0 and selector2=0, we return MulTorus(t2, t0) decompressed.
 		//   - Otherwise, we return 1.
 		_sum := pr.Ext6.Add(t0, t2)
 		selector2 = pr.Ext6.IsZero(_sum)
@@ -668,5 +678,70 @@ func (pr Pairing) lineCompute(p1, p2 *G2Affine) *lineEvaluation {
 	line.R1 = *pr.Ext2.Sub(&line.R1, &p1.Y)
 
 	return &line
+
+}
+
+/*-------------------------------------------------------------------------------------------
+To have a fixed-circuit fot the ECPAIR EVM precompile, we need 4 circuits:
+- Fixed-size Miller loop (n=1): SingleMLandEasyPart
+- Fixed-size Miller loop (n=2): DoubleMLandEasyPart
+- Multiplication in GT: MulTorus
+- Final exponentiation: FinalExponentiation
+
+Examples:
+Batch 1: P1 ∈ G1 and Q1 ∈ G2
+Batch 2: P1, P2 ∈ G1 and Q1, Q2 ∈ G2
+Batch 3: P1, P2, P3 ∈ G1 and Q1, Q2, Q3 ∈ G2
+Batch 4: P1, P2, P3, P4 ∈ G1 and Q1, Q2, Q3, Q4 ∈ G2
+Batch 5: P1, P2, P3, P4, P5 ∈ G1 and Q1, Q2, Q3, Q4, Q5 ∈ G2
+
+* Batch 1 should never occur because e(P,Q)≠1 ∀P, Q ∈ G1, G2. So the precompile
+  would fail anyway.
+* Batch 2 occurs for e.g. BLS signature (single) verification, KZG verification...
+  e(P1,Q1)*e(P2,Q2) = | ml := DoubleMLandEasyPart({P1,P1},{Q1,Q2})
+					  | f := FinalExponentiation(ml)
+* Batch 3 occurs for e.g. QAP divisibility check in Pinocchio protocol verification.
+  e(P1,Q1)*e(P2,Q2)*e(P3,Q3) = | ml1 := DoubleMLandEasyPart({P1,P2},{Q1,Q2})
+							   | ml2 := SingleMLandEasyPart(P3,Q3)
+					  		   | ml := MulTorus(ml1, ml2)
+					  	       | f := FinalExponentiation(ml)
+* Batch 4 occurs for e.g. Groth16 verification.
+  e(P1,Q1)*e(P2,Q2)*e(P3,Q3)*e(P4,Q4) = | ml1 := DoubleMLandEasyPart({P1,P2},{Q1,Q2})
+                                        | ml2 := DoubleMLandEasyPart({P3,P4},{Q3,Q4})
+					  		   	        | ml := MulTorus(ml1, ml2)
+					  	       	        | f := FinalExponentiation(ml)
+* Batch 5 might occur for e.g. BLS signature (aggregated) verification.
+  e(P1,Q1)*e(P2,Q2)*e(P3,Q3)*e(P4,Q4)*e(P5,Q5) = | ml1 := DoubleMLandEasyPart({P1,P2},{Q1,Q2})
+                                                 | ml2 := DoubleMLandEasyPart({P3,P4},{Q3,Q4})
+                                                 | ml3 := SingleMLandEasyPart(P5,Q5)
+					  		   	                 | ml := MulTorus(ml1, ml2)
+					  		   	                 | ml = MulTorus(ml, ml3)
+					  	       	                 | f := FinalExponentiation(ml)
+
+  N.B.: Batches 3, 4 and 5 are sub-optimal compared to Pair() but the result is
+  a fixed-circuit.
+-------------------------------------------------------------------------------------------*/
+
+// SingleMLandEasyPart is the same as MillerLoop but for a fixed size of 1
+func (pr Pairing) SingleMLandEasyPart(P *G1Affine, Q *G2Affine) (*fields_bn254.E6, frontend.Variable, error) {
+	ml, err := pr.MillerLoop([]*G1Affine{P}, []*G2Affine{Q})
+	if err != nil {
+		return nil, nil, fmt.Errorf("miller loop: %w", err)
+	}
+
+	res, selector := pr.easyPart(ml, false)
+	return res, selector, err
+
+}
+
+// DoubleMLandEasyPart is the same as MillerLoop but for a fixed size of 2
+func (pr Pairing) DoubleMLandEasyPart(P [2]*G1Affine, Q [2]*G2Affine) (*fields_bn254.E6, frontend.Variable, error) {
+	ml, err := pr.MillerLoop([]*G1Affine{P[0], P[1]}, []*G2Affine{Q[0], Q[1]})
+	if err != nil {
+		return nil, nil, fmt.Errorf("miller loop: %w", err)
+	}
+
+	res, selector := pr.easyPart(ml, false)
+	return res, selector, err
 
 }

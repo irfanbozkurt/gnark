@@ -132,37 +132,69 @@ func TestECMulCircuitFull(t *testing.T) {
 	)
 }
 
-type ecpairCircuit struct {
-	P [2]sw_bn254.G1Affine
-	Q [2]sw_bn254.G2Affine
+type ecpairBatch4Circuit struct {
+	P [4]sw_bn254.G1Affine
+	Q [4]sw_bn254.G2Affine
 }
 
-func (c *ecpairCircuit) Define(api frontend.API) error {
-	P := []*sw_bn254.G1Affine{&c.P[0], &c.P[1]}
-	Q := []*sw_bn254.G2Affine{&c.Q[0], &c.Q[1]}
-	ECPair(api, P, Q)
+func (c *ecpairBatch4Circuit) Define(api frontend.API) error {
+	P := []*sw_bn254.G1Affine{&c.P[0], &c.P[1], &c.P[2], &c.P[3]}
+	Q := []*sw_bn254.G2Affine{&c.Q[0], &c.Q[1], &c.Q[2], &c.Q[3]}
+	ECPair(api, P, Q, 4)
 	return nil
 }
 
-func TestECPairCircuitShort(t *testing.T) {
+func TestECPair4Circuit(t *testing.T) {
 	assert := test.NewAssert(t)
-	_, _, p1, q1 := bn254.Generators()
+	_, _, p, q := bn254.Generators()
 
 	var u, v fr.Element
 	u.SetRandom()
 	v.SetRandom()
 
-	p1.ScalarMultiplication(&p1, u.BigInt(new(big.Int)))
-	q1.ScalarMultiplication(&q1, v.BigInt(new(big.Int)))
+	p.ScalarMultiplication(&p, u.BigInt(new(big.Int)))
+	q.ScalarMultiplication(&q, v.BigInt(new(big.Int)))
 
-	var p2 bn254.G1Affine
-	var q2 bn254.G2Affine
-	p2.Neg(&p1)
-	q2.Set(&q1)
+	var np bn254.G1Affine
+	np.Neg(&p)
 
-	err := test.IsSolved(&ecpairCircuit{}, &ecpairCircuit{
-		P: [2]sw_bn254.G1Affine{sw_bn254.NewG1Affine(p1), sw_bn254.NewG1Affine(p2)},
-		Q: [2]sw_bn254.G2Affine{sw_bn254.NewG2Affine(q1), sw_bn254.NewG2Affine(q2)},
+	err := test.IsSolved(&ecpairBatch4Circuit{}, &ecpairBatch4Circuit{
+		P: [4]sw_bn254.G1Affine{sw_bn254.NewG1Affine(p), sw_bn254.NewG1Affine(np), sw_bn254.NewG1Affine(p), sw_bn254.NewG1Affine(np)},
+		Q: [4]sw_bn254.G2Affine{sw_bn254.NewG2Affine(q), sw_bn254.NewG2Affine(q), sw_bn254.NewG2Affine(q), sw_bn254.NewG2Affine(q)},
+	}, ecc.BN254.ScalarField())
+	assert.NoError(err)
+}
+
+type ecpairBatch5Circuit struct {
+	P [5]sw_bn254.G1Affine
+	Q [5]sw_bn254.G2Affine
+}
+
+func (c *ecpairBatch5Circuit) Define(api frontend.API) error {
+	P := []*sw_bn254.G1Affine{&c.P[0], &c.P[1], &c.P[2], &c.P[3], &c.P[4]}
+	Q := []*sw_bn254.G2Affine{&c.Q[0], &c.Q[1], &c.Q[2], &c.Q[3], &c.Q[4]}
+	ECPair(api, P, Q, 5)
+	return nil
+}
+
+func TestECPair5Circuit(t *testing.T) {
+	assert := test.NewAssert(t)
+	_, _, p, q := bn254.Generators()
+
+	var u, v fr.Element
+	u.SetRandom()
+	v.SetRandom()
+
+	p.ScalarMultiplication(&p, u.BigInt(new(big.Int)))
+	q.ScalarMultiplication(&q, v.BigInt(new(big.Int)))
+
+	var p2, np bn254.G1Affine
+	p2.Double(&p)
+	np.Neg(&p)
+
+	err := test.IsSolved(&ecpairBatch5Circuit{}, &ecpairBatch5Circuit{
+		P: [5]sw_bn254.G1Affine{sw_bn254.NewG1Affine(p), sw_bn254.NewG1Affine(np), sw_bn254.NewG1Affine(np), sw_bn254.NewG1Affine(np), sw_bn254.NewG1Affine(p2)},
+		Q: [5]sw_bn254.G2Affine{sw_bn254.NewG2Affine(q), sw_bn254.NewG2Affine(q), sw_bn254.NewG2Affine(q), sw_bn254.NewG2Affine(q), sw_bn254.NewG2Affine(q)},
 	}, ecc.BN254.ScalarField())
 	assert.NoError(err)
 }
