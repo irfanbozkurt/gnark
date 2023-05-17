@@ -148,12 +148,14 @@ func TestECPair4Circuit(t *testing.T) {
 	assert := test.NewAssert(t)
 	_, _, p, q := bn254.Generators()
 
-	var u, v fr.Element
-	u.SetRandom()
-	v.SetRandom()
+	/*
+		var u, v fr.Element
+		u.SetRandom()
+		v.SetRandom()
 
-	p.ScalarMultiplication(&p, u.BigInt(new(big.Int)))
-	q.ScalarMultiplication(&q, v.BigInt(new(big.Int)))
+		p.ScalarMultiplication(&p, u.BigInt(new(big.Int)))
+		q.ScalarMultiplication(&q, v.BigInt(new(big.Int)))
+	*/
 
 	var np bn254.G1Affine
 	np.Neg(&p)
