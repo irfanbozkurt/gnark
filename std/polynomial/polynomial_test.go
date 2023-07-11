@@ -126,6 +126,10 @@ type interpolateLDECircuit struct {
 	ExpectedInterpolation frontend.Variable   `gnark:",secret"`
 }
 
+func (c *interpolateLDECircuit) hollow() frontend.Circuit {
+	return &interpolateLDECircuit{Values: make([]frontend.Variable, len(c.Values))}
+}
+
 func (c *interpolateLDECircuit) Define(api frontend.API) error {
 	evaluation := InterpolateLDE(api, c.At, c.Values)
 	api.AssertIsEqual(evaluation, c.ExpectedInterpolation)
@@ -171,7 +175,6 @@ func TestInterpolateLinearExtension(t *testing.T) {
 }
 
 func TestInterpolateQuadraticExtension(t *testing.T) {
-	fmt.Println("boop boop")
 	// The polynomial is 1 + 2X + 3X²
 	testInterpolateLDE(
 		t,
@@ -186,6 +189,15 @@ func TestInterpolateQuadraticExtension(t *testing.T) {
 		[]int64{1, 6, 17},
 		2,
 	)
+}
+
+func TestInterpolateLdeBls12_381(t *testing.T) {
+	assignment := &interpolateLDECircuit{
+		At:                    -1,
+		Values:                []frontend.Variable{256, -2187, "52435875175126190479447740508185965837690552500527637822603658699938581118977", "52435875175126190479447740508185965837690552500527637822603658699938580637638", "52435875175126190479447740508185965837690552500527637822603658699938578385153", "52435875175126190479447740508185965837690552500527637822603658699938570478454", "52435875175126190479447740508185965837690552500527637822603658699938547630081", "52435875175126190479447740508185965837690552500527637822603658699938490308102", "52435875175126190479447740508185965837690552500527637822603658699938361184513"},
+		ExpectedInterpolation: 5,
+	}
+	test.NewAssert(t).SolvingSucceeded(assignment.hollow(), assignment, test.WithCurves(ecc.BLS12_381))
 }
 
 func TestNegFactorial(t *testing.T) {

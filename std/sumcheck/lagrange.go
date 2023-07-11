@@ -33,7 +33,7 @@ func InterpolateOnRange(api frontend.API, at frontend.Variable, values ...fronte
 	}
 
 	var res frontend.Variable
-	res = 0 // @gbotrel: does the API know x ↦ 0+x is a no-op?
+	res = 0
 
 	for i, c := range values {
 		res = api.Add(res,
