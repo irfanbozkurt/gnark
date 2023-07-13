@@ -413,7 +413,7 @@ func (solver *solver) processInstruction(pi constraint.PackedInstruction, scratc
 	return nil
 }
 
-// run runs the solver. it return an error if a constraint is not satisfied or if not all wires
+// run runs the solver. it returns an error if a constraint is not satisfied or if not all wires
 // were instantiated.
 func (solver *solver) run() error {
 	// minWorkPerCPU is the minimum target number of constraint a task should hold

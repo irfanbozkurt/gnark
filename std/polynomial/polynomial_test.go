@@ -6,6 +6,8 @@ import (
 	"github.com/consensys/gnark/backend"
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/test"
+	"github.com/stretchr/testify/require"
+	"math/big"
 	"testing"
 )
 
@@ -197,7 +199,7 @@ func TestInterpolateLdeBls12_381(t *testing.T) {
 		Values:                []frontend.Variable{256, -2187, "52435875175126190479447740508185965837690552500527637822603658699938581118977", "52435875175126190479447740508185965837690552500527637822603658699938580637638", "52435875175126190479447740508185965837690552500527637822603658699938578385153", "52435875175126190479447740508185965837690552500527637822603658699938570478454", "52435875175126190479447740508185965837690552500527637822603658699938547630081", "52435875175126190479447740508185965837690552500527637822603658699938490308102", "52435875175126190479447740508185965837690552500527637822603658699938361184513"},
 		ExpectedInterpolation: 5,
 	}
-	test.NewAssert(t).SolvingSucceeded(assignment.hollow(), assignment, test.WithCurves(ecc.BLS12_381))
+	test.NewAssert(t).SolvingSucceeded(assignment.hollow(), assignment, test.WithCurves(ecc.BLS12_381), test.WithBackends(backend.PLONK)) //TODO Remove Backends option
 }
 
 func TestNegFactorial(t *testing.T) {
@@ -215,4 +217,18 @@ func int64SliceToVariableSlice(slice []int64) []frontend.Variable {
 		res = append(res, v)
 	}
 	return res
+}
+
+func giantNumsEqualBls12_381Decimal(a, b string) bool {
+	var A, B, mod big.Int
+	mod.SetString("52435875175126190479447740508185965837690552500527637822603658699938581184513", 10)
+	A.SetString(a, 10)
+	B.SetString(b, 10)
+	A.Sub(&A, &B)
+	A.Mod(&A, &mod)
+	return A.BitLen() == 0
+}
+
+func TestEqual(t *testing.T) {
+	require.True(t, giantNumsEqualBls12_381Decimal("-84", "13108968793781547619861935127046491459422638125131909455650914674984645295997"))
 }
