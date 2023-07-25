@@ -42,6 +42,7 @@ func TestPoseidon(t *testing.T) {
 	}
 
 	// running Poseidon (Go)
+	// TODO @yelhousni: corresponding go implementation in gnark-crypto
 	expectedh, _ := iden3.Hash(data)
 
 	// assert correctness against correct witness
