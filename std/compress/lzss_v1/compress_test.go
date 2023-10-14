@@ -1,14 +1,16 @@
 package lzss_v1
 
 import (
+	"bytes"
 	"fmt"
+	"os"
+	"strings"
+	"testing"
+
 	"github.com/consensys/gnark/std/compress"
 	"github.com/consensys/gnark/std/compress/huffman"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"os"
-	"strings"
-	"testing"
 )
 
 func testCompressionRoundTrip(t *testing.T, nbBytesAddress uint, d []byte, testCaseName ...string) {
@@ -229,4 +231,39 @@ func TestDifferentHuffmanTrees(t *testing.T) {
 	fmt.Println("Regular huffman compression up to:", float64(8*len(d))/float64(huffman.EstimateHuffmanCodeSize(compress.NewStreamFromBytes(c))-256))
 	fmt.Println("Further compression:", float64(len(c))/float64((total+7)/8))
 	fmt.Println("Total compression:", float64(len(d))/float64((total+7)/8))
+}
+
+// Fuzz test the compression / decompression
+func FuzzCompress(f *testing.F) {
+	f.Add([]byte("hi"))
+	f.Add([]byte{0, 0, 0, 0, 0, 0, 0, 0})
+
+	f.Fuzz(func(t *testing.T, a []byte) {
+		var logHeads []LogHeads
+		var settings = Settings{
+			BackRefSettings: BackRefSettings{
+				NbBytesAddress: 2,
+				NbBytesLength:  1,
+				Symbol:         0,
+			},
+			LogHeads: &logHeads,
+		}
+
+		compressedBytes, err := Compress(a, settings)
+
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		decompressedBytes, err := DecompressPureGo(compressedBytes, settings)
+
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if !bytes.Equal(a, decompressedBytes) {
+			t.Fatal("decompressed bytes are not equal to original bytes")
+		}
+
+	})
 }
