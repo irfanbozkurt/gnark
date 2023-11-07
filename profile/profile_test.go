@@ -4,11 +4,13 @@ package profile_test
 
 import (
 	"fmt"
+	"testing"
 
 	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/frontend/cs/r1cs"
 	"github.com/consensys/gnark/profile"
+	"github.com/stretchr/testify/require"
 )
 
 type Circuit struct {
@@ -58,4 +60,35 @@ func Example() {
 	fmt.Println(p.NbConstraints())
 	// Output:
 	// 2
+}
+
+type CircuitWithDefer struct {
+	A frontend.Variable
+}
+
+func (circuit *CircuitWithDefer) Define(api frontend.API) error {
+	api.Compiler().Defer(circuit.deferedCallA)
+	api.Compiler().Defer(circuit.deferedCallB)
+	return nil
+}
+
+func (circuit *CircuitWithDefer) deferedCallA(api frontend.API) error {
+	api.AssertIsEqual(api.Mul(circuit.A, circuit.A), circuit.A)
+	// api.Compiler().Defer(circuit.deferedCallB)
+	return nil
+}
+
+func (circuit *CircuitWithDefer) deferedCallB(api frontend.API) error {
+	api.AssertIsEqual(api.Add(circuit.A, circuit.A), circuit.A)
+	return nil
+}
+
+func TestDefer(t *testing.T) {
+	assert := require.New(t)
+	p := profile.Start(profile.WithPath("gnark2.pprof"))
+	_, err := frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, &CircuitWithDefer{})
+	p.Stop()
+	assert.NoError(err)
+
+	fmt.Println(p.Top())
 }

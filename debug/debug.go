@@ -80,3 +80,18 @@ func writeStack(sbb *strings.Builder, forceClean ...bool) {
 		}
 	}
 }
+
+var DeferedStacks = make([][]uintptr, 0, 10)
+
+func PushDeferredStack(stack []uintptr) {
+	DeferedStacks = append(DeferedStacks, stack)
+}
+
+func PopDeferredStack() []uintptr {
+	if len(DeferedStacks) == 0 {
+		return nil
+	}
+	stack := DeferedStacks[len(DeferedStacks)-1]
+	DeferedStacks = DeferedStacks[:len(DeferedStacks)-1]
+	return stack
+}

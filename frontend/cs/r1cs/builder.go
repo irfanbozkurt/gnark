@@ -473,7 +473,7 @@ func (builder *builder) compress(le expr.LinearExpression) expr.LinearExpression
 }
 
 func (builder *builder) Defer(cb func(frontend.API) error) {
-	circuitdefer.Put(builder, cb)
+	circuitdefer.Push(builder, cb)
 }
 
 func (*builder) FrontendType() frontendtype.Type {

@@ -146,9 +146,9 @@ func IsSolved(circuit, witness frontend.Circuit, field *big.Int, opts ...TestEng
 }
 
 func callDeferred(builder *engine) error {
-	for i := 0; i < len(circuitdefer.GetAll[func(frontend.API) error](builder)); i++ {
-		if err := circuitdefer.GetAll[func(frontend.API) error](builder)[i](builder); err != nil {
-			return fmt.Errorf("defer fn %d: %w", i, err)
+	for cb, ok := circuitdefer.Pop(builder); ok; cb, ok = circuitdefer.Pop(builder) {
+		if err := cb.CallBack.(func(frontend.API) error)(builder); err != nil {
+			return fmt.Errorf("deferred: %w", err)
 		}
 	}
 	return nil
@@ -674,7 +674,7 @@ func (e *engine) Commit(v ...frontend.Variable) (frontend.Variable, error) {
 }
 
 func (e *engine) Defer(cb func(frontend.API) error) {
-	circuitdefer.Put(e, cb)
+	circuitdefer.Push(e, cb)
 }
 
 // AddInstruction is used to add custom instructions to the constraint system.

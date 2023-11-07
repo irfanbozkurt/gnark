@@ -660,7 +660,7 @@ func (builder *builder) newDebugInfo(errName string, in ...interface{}) constrai
 }
 
 func (builder *builder) Defer(cb func(frontend.API) error) {
-	circuitdefer.Put(builder, cb)
+	circuitdefer.Push(builder, cb)
 }
 
 // AddInstruction is used to add custom instructions to the constraint system.

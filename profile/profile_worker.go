@@ -1,6 +1,7 @@
 package profile
 
 import (
+	"fmt"
 	"runtime"
 	"strings"
 	"sync"
@@ -19,7 +20,7 @@ var onceInit sync.Once
 
 type command struct {
 	p      *Profile
-	pc     []uintptr
+	pcs    [][]uintptr
 	remove bool
 }
 
@@ -45,66 +46,77 @@ func worker() {
 		}
 
 		// it's a sampling of event
-		collectSample(c.pc)
+		collectSample(c.pcs)
 	}
 
 }
 
 // collectSample must be called from the worker go routine
-func collectSample(pc []uintptr) {
+func collectSample(pcs [][]uintptr) {
 	// for each session we may have a distinct sample, since ids of functions and locations may mismatch
 	samples := make([]*profile.Sample, len(sessions))
 	for i := 0; i < len(samples); i++ {
 		samples[i] = &profile.Sample{Value: []int64{1}} // for now, we just collect new constraints count
 	}
 
-	frames := runtime.CallersFrames(pc)
-	// Loop to get frames.
-	// A fixed number of pcs can expand to an indefinite number of Frames.
-	for {
-		frame, more := frames.Next()
+	for _, pc := range pcs {
+		frames := runtime.CallersFrames(pc)
+		// Loop to get frames.
+		// A fixed number of pcs can expand to an indefinite number of Frames.
+		for {
+			frame, more := frames.Next()
 
-		if strings.Contains(frame.Function, "frontend.parseCircuit") {
-			// we stop; previous frame was the .Define definition of the circuit
-			break
-		}
-
-		if strings.HasSuffix(frame.Function, ".func1") {
-			// TODO @gbotrel filter anonymous func better
-			continue
-		}
-
-		// filter internal builder functions
-		if filterSCSPrivateFunc(frame.Function) || filterR1CSPrivateFunc(frame.Function) {
-			continue
-		}
-
-		// TODO @gbotrel [...] -> from generics display poorly in pprof
-		// https://github.com/golang/go/issues/54105
-		frame.Function = strings.Replace(frame.Function, "[...]", "[T]", -1)
-
-		for i := 0; i < len(samples); i++ {
-			samples[i].Location = append(samples[i].Location, sessions[i].getLocation(&frame))
-		}
-
-		if !more {
-			break
-		}
-		if strings.HasSuffix(frame.Function, ".Define") {
-			for i := 0; i < len(sessions); i++ {
-				sessions[i].onceSetName.Do(func() {
-					// once per profile session, we set the "name of the binary"
-					// here we grep the struct name where "Define" exist: hopefully the circuit Name
-					// note: this won't work well for nested Define calls.
-					fe := strings.Split(frame.Function, "/")
-					circuitName := strings.TrimSuffix(fe[len(fe)-1], ".Define")
-					sessions[i].pprof.Mapping = []*profile.Mapping{
-						{ID: 1, File: circuitName},
-					}
-				})
+			if strings.Contains(frame.Function, "frontend.parseCircuit") {
+				// we stop; previous frame was the .Define definition of the circuit
+				break
 			}
-			// break --> we break when we hit frontend.parseCircuit; in case we have nested Define calls in the stack.
+
+			if strings.HasSuffix(frame.Function, ".func1") {
+				// TODO @gbotrel filter anonymous func better
+				continue
+			}
+
+			fmt.Println("function", frame.Function)
+
+			if strings.HasSuffix(frame.Function, "callDeferred") {
+				// we fetch the stack trace from the deferred call
+				// TODO @gbotrel
+				break
+			}
+
+			// filter internal builder functions
+			if filterSCSPrivateFunc(frame.Function) || filterR1CSPrivateFunc(frame.Function) {
+				continue
+			}
+
+			// TODO @gbotrel [...] -> from generics display poorly in pprof
+			// https://github.com/golang/go/issues/54105
+			frame.Function = strings.Replace(frame.Function, "[...]", "[T]", -1)
+
+			for i := 0; i < len(samples); i++ {
+				samples[i].Location = append(samples[i].Location, sessions[i].getLocation(&frame))
+			}
+
+			if !more {
+				break
+			}
+			if strings.HasSuffix(frame.Function, ".Define") {
+				for i := 0; i < len(sessions); i++ {
+					sessions[i].onceSetName.Do(func() {
+						// once per profile session, we set the "name of the binary"
+						// here we grep the struct name where "Define" exist: hopefully the circuit Name
+						// note: this won't work well for nested Define calls.
+						fe := strings.Split(frame.Function, "/")
+						circuitName := strings.TrimSuffix(fe[len(fe)-1], ".Define")
+						sessions[i].pprof.Mapping = []*profile.Mapping{
+							{ID: 1, File: circuitName},
+						}
+					})
+				}
+				// break --> we break when we hit frontend.parseCircuit; in case we have nested Define calls in the stack.
+			}
 		}
+
 	}
 
 	for i := 0; i < len(sessions); i++ {

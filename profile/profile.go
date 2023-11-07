@@ -13,6 +13,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/consensys/gnark/debug"
 	"github.com/consensys/gnark/logger"
 	"github.com/consensys/gnark/profile/internal/report"
 	"github.com/google/pprof/profile"
@@ -156,9 +157,13 @@ func (p *Profile) Top() string {
 	return buf.String()
 }
 
+func HasActiveSessions() bool {
+	return atomic.LoadUint32(&activeSessions) > 0
+}
+
 // RecordConstraint add a sample (with count == 1) to all the active profiling sessions.
 func RecordConstraint() {
-	if n := atomic.LoadUint32(&activeSessions); n == 0 {
+	if !HasActiveSessions() {
 		return // do nothing, no active session.
 	}
 
@@ -169,7 +174,17 @@ func RecordConstraint() {
 		return
 	}
 	pc = pc[:n]
-	chCommands <- command{pc: pc}
+
+	// if we are in a Defer -- we need to augment the trace.
+	if len(debug.DeferedStacks) > 0 {
+		// remove the return frame
+
+		// pcs := append([][]uintptr{pc}, debug.DeferedStacks...)
+		pcs := [][]uintptr{pc, debug.DeferedStacks[len(debug.DeferedStacks)-1]}
+		chCommands <- command{pcs: pcs}
+	} else {
+		chCommands <- command{pcs: [][]uintptr{pc}}
+	}
 }
 
 func (p *Profile) getLocation(frame *runtime.Frame) *profile.Location {

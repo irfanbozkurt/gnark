@@ -131,10 +131,15 @@ func parseCircuit(builder Builder, circuit Circuit) (err error) {
 }
 
 func callDeferred(builder Builder) error {
-	for i := 0; i < len(circuitdefer.GetAll[func(API) error](builder)); i++ {
-		if err := circuitdefer.GetAll[func(API) error](builder)[i](builder); err != nil {
-			return fmt.Errorf("defer fn %d: %w", i, err)
+	for cb, ok := circuitdefer.Pop(builder); ok; cb, ok = circuitdefer.Pop(builder) {
+
+		// before executing we push the original stack of this call back in debug.
+		debug.PushDeferredStack(cb.Stack)
+		if err := cb.CallBack.(func(API) error)(builder); err != nil {
+			return fmt.Errorf("deferred: %w", err)
 		}
+		// pop the stack
+		debug.PopDeferredStack()
 	}
 	return nil
 }
