@@ -2,7 +2,6 @@ package huffman
 
 import (
 	"github.com/consensys/gnark/std/compress"
-	"sort"
 )
 
 // copilot code
@@ -16,26 +15,28 @@ type huffmanNode struct {
 
 func CreateTree(weights []int) *huffmanNode {
 	// Create a list of nodes
-	nodes := make([]*huffmanNode, len(weights))
+	nodes := make(minHeap, len(weights), len(weights)*2)
 	for i := 0; i < len(weights); i++ {
 		nodes[i] = &huffmanNode{weight: weights[i], symbol: i, nbDescendents: 1}
 	}
 
+	nodes.heapify()
+
 	// Create the tree
 	for len(nodes) > 1 {
-		// Sort the nodes
-		sort.Slice(nodes, func(i, j int) bool {
-			return nodes[i].weight < nodes[j].weight
-		})
+
+		// remove the first two nodes
+		a := nodes[0]
+		nodes.popHead()
+		b := nodes[0]
+		nodes.popHead()
 
 		// Create a new node
-		newNode := &huffmanNode{weight: nodes[0].weight + nodes[1].weight, left: nodes[0], right: nodes[1],
-			nbDescendents: nodes[0].nbDescendents + nodes[1].nbDescendents}
-		// Remove the first two nodes
-		nodes = nodes[2:]
+		newNode := &huffmanNode{weight: a.weight + b.weight, left: a, right: b,
+			nbDescendents: a.nbDescendents + b.nbDescendents}
 
 		// Add the new node
-		nodes = append(nodes, newNode)
+		nodes.push(newNode)
 	}
 
 	return nodes[0]
@@ -111,4 +112,85 @@ func (node *huffmanNode) traverse(code []int, codes [][]int) {
 	if node.right != nil {
 		node.right.traverse(append(code, 1), codes)
 	}
+}
+
+// An minHeap is a min-heap of linear expressions. It facilitates merging k-linear expressions.
+//
+// The code is identical to https://pkg.go.dev/container/heap but replaces interfaces with concrete
+// type to avoid memory overhead.
+type minHeap []*huffmanNode
+
+func (h minHeap) less(i, j int) bool {
+	return h[i].weight < h[j].weight || (h[i].weight == h[j].weight && h[i].nbDescendents < h[j].nbDescendents) // prevent very deep trees
+}
+func (h minHeap) swap(i, j int) { h[i], h[j] = h[j], h[i] }
+
+// heapify establishes the heap invariants required by the other routines in this package.
+// heapify is idempotent with respect to the heap invariants
+// and may be called whenever the heap invariants may have been invalidated.
+// The complexity is O(n) where n = len(*h).
+func (h *minHeap) heapify() {
+	// heapify
+	n := len(*h)
+	for i := n/2 - 1; i >= 0; i-- {
+		h.down(i, n)
+	}
+}
+
+// push the element x onto the heap.
+// The complexity is O(log n) where n = len(*h).
+func (h *minHeap) push(x *huffmanNode) {
+	*h = append(*h, x)
+	h.up(len(*h) - 1)
+}
+
+// Pop removes and returns the minimum element (according to Less) from the heap.
+// The complexity is O(log n) where n = len(*h).
+// Pop is equivalent to Remove(h, 0).
+func (h *minHeap) popHead() {
+	n := len(*h) - 1
+	h.swap(0, n)
+	h.down(0, n)
+	*h = (*h)[0:n]
+}
+
+// fix re-establishes the heap ordering after the element at index i has changed its value.
+// Changing the value of the element at index i and then calling fix is equivalent to,
+// but less expensive than, calling Remove(h, i) followed by a Push of the new value.
+// The complexity is O(log n) where n = len(*h).
+func (h *minHeap) fix(i int) {
+	if !h.down(i, len(*h)) {
+		h.up(i)
+	}
+}
+
+func (h *minHeap) up(j int) {
+	for {
+		i := (j - 1) / 2 // parent
+		if i == j || !h.less(j, i) {
+			break
+		}
+		h.swap(i, j)
+		j = i
+	}
+}
+
+func (h *minHeap) down(i0, n int) bool {
+	i := i0
+	for {
+		j1 := 2*i + 1
+		if j1 >= n || j1 < 0 { // j1 < 0 after int overflow
+			break
+		}
+		j := j1 // left child
+		if j2 := j1 + 1; j2 < n && h.less(j2, j1) {
+			j = j2 // = 2*i + 2  // right child
+		}
+		if !h.less(j, i) {
+			break
+		}
+		h.swap(i, j)
+		i = j
+	}
+	return i > i0
 }

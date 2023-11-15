@@ -137,6 +137,36 @@ func TestAverageBatch(t *testing.T) {
 
 }
 
+func TestAverageBatchHuffman(t *testing.T) {
+	assert := require.New(t)
+
+	// read "average_block.hex" file
+	d, err := os.ReadFile("./average_block.hex")
+	assert.NoError(err)
+
+	// convert to bytes
+	data, err := hex.DecodeString(string(d))
+	assert.NoError(err)
+
+	dict := getDictionnary()
+	compressor, err := NewCompressor(dict)
+	assert.NoError(err)
+
+	c, err := compressor.Compress(data)
+	assert.NoError(err)
+
+	fmt.Println("training huffman")
+	var h huffmanEncoder
+	h.Train([][]byte{c}, dict)
+	fmt.Println("applying huffman")
+	nbBitsHuffman := h.nbBits(c, dict)
+
+	fmt.Println("no huffman", len(c), "with huffman", (nbBitsHuffman+7)/8, "ratio from", float64(len(data))/float64(len(c)), "to", float64(8*len(data))/float64(nbBitsHuffman))
+
+	huffmanMarshaled := h.Marshal()
+	fmt.Println("marshaled huffman", len(huffmanMarshaled))
+}
+
 func BenchmarkAverageBatch(b *testing.B) {
 	// read the file
 	d, err := os.ReadFile("./average_block.hex")
