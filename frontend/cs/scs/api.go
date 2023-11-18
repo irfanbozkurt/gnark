@@ -518,51 +518,6 @@ func (builder *builder) IsZero(i1 frontend.Variable) frontend.Variable {
 	return m
 }
 
-// IsNonZero returns 0 if a is zero, 1 otherwise
-func (builder *builder) IsNonZero(i1 frontend.Variable) frontend.Variable {
-	if a, ok := builder.constantValue(i1); ok {
-		if a.IsZero() {
-			return 0
-		}
-		return 1
-	}
-
-	// x = 1/a 				// in a hint (x == 0 if a == 0)
-	// m = a*x              // constrain m to be 0 if a == 0
-	// a * m = a            // constrain m to be 1 if a != 0
-	a := i1.(expr.Term)
-	m := builder.newInternalVariable()
-
-	// x = 1/a 				// in a hint (x == 0 if a == 0)
-	x, err := builder.NewHint(solver.InvZeroHint, 1, a)
-	if err != nil {
-		// the function errs only if the number of inputs is invalid.
-		panic(err)
-	}
-
-	// m = a*x              // constrain m to be 0 if a == 0
-	// a*x - m = 0
-	X := x[0].(expr.Term)
-	builder.addPlonkConstraint(sparseR1C{
-		xa: a.VID,
-		xb: X.VID,
-		xc: m.VID,
-		qM: a.Coeff,
-		qO: builder.tMinusOne,
-	})
-
-	// a * m = a            // constrain m to be 1 if a != 0
-	// a*m - a = 0
-	builder.addPlonkConstraint(sparseR1C{
-		xa: a.VID,
-		xb: m.VID,
-		qL: builder.tMinusOne,
-		qM: a.Coeff,
-	})
-
-	return m
-}
-
 // Cmp returns 1 if i1>i2, 0 if i1=i2, -1 if i1<i2
 func (builder *builder) Cmp(i1, i2 frontend.Variable) frontend.Variable {
 
@@ -680,13 +635,11 @@ func (builder *builder) Commit(v ...frontend.Variable) (frontend.Variable, error
 		builder.addPlonkConstraint(sparseR1C{xa: vINeg.VID, qL: vINeg.Coeff, commitment: constraint.COMMITTED})
 	}
 
-	hintId, err := cs.RegisterBsb22CommitmentComputePlaceholder(len(commitments))
+	inputs := make([]frontend.Variable, len(v)+1)
+	inputs[0] = len(commitments) // commitment depth
+	copy(inputs[1:], v)
+	outs, err := builder.NewHint(cs.Bsb22CommitmentComputePlaceholder, 1, inputs...)
 	if err != nil {
-		return nil, err
-	}
-
-	var outs []frontend.Variable
-	if outs, err = builder.NewHintForId(hintId, 1, v...); err != nil {
 		return nil, err
 	}
 
@@ -696,14 +649,24 @@ func (builder *builder) Commit(v ...frontend.Variable) (frontend.Variable, error
 	builder.addPlonkConstraint(sparseR1C{xa: commitmentVar.VID, qL: commitmentVar.Coeff, commitment: constraint.COMMITMENT}) // value will be injected later
 
 	return outs[0], builder.cs.AddCommitment(constraint.PlonkCommitment{
-		HintID:          hintId,
 		CommitmentIndex: commitmentConstraintIndex,
 		Committed:       committed,
 	})
 }
 
-// NewCombination in the form of res = qL.a + qR.b + qM.ab + qC
-func (builder *builder) NewCombination(a, b frontend.Variable, qL, qR, qM, qC int) frontend.Variable {
+// EvaluatePlonkExpression in the form of res = qL.a + qR.b + qM.ab + qC
+func (builder *builder) EvaluatePlonkExpression(a, b frontend.Variable, qL, qR, qM, qC int) frontend.Variable {
+	_, aConstant := builder.constantValue(a)
+	_, bConstant := builder.constantValue(b)
+	if aConstant || bConstant {
+		return builder.Add(
+			builder.Mul(a, qL),
+			builder.Mul(b, qR),
+			builder.Mul(a, b, qM),
+			qC,
+		)
+	}
+
 	res := builder.newInternalVariable()
 	builder.addPlonkConstraint(sparseR1C{
 		xa: a.(expr.Term).VID,
@@ -711,7 +674,7 @@ func (builder *builder) NewCombination(a, b frontend.Variable, qL, qR, qM, qC in
 		xc: res.VID,
 		qL: builder.cs.Mul(builder.cs.FromInterface(qL), a.(expr.Term).Coeff),
 		qR: builder.cs.Mul(builder.cs.FromInterface(qR), b.(expr.Term).Coeff),
-		qO: builder.cs.FromInterface(-1),
+		qO: builder.tMinusOne,
 		qM: builder.cs.Mul(builder.cs.FromInterface(qM), builder.cs.Mul(a.(expr.Term).Coeff, b.(expr.Term).Coeff)),
 		qC: builder.cs.FromInterface(qC),
 	})
