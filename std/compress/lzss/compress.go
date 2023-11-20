@@ -35,7 +35,7 @@ const (
 	GoodCompression        = 2
 	GoodSnarkDecompression = 4
 
-	// BestSnarkDecomposition forces the compressor to produce byte-aligned output.
+	// BestSnarkDecompression forces the compressor to produce byte-aligned output.
 	// It is convenient and efficient for the SNARK decompressor but can hurt the compression ratio significantly
 	BestSnarkDecompression = 8
 )
