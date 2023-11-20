@@ -1,4 +1,4 @@
-package lzss_v2
+package lzss
 
 import (
 	"bytes"
@@ -9,19 +9,20 @@ import (
 	"math/bits"
 )
 
-type huffmanEncoder struct {
+type HuffmanSettings struct {
 	charLengths, lenLengths, addrLengths []int
 }
 
-func (h *huffmanEncoder) Train(c [][]byte, dict []byte) {
+func (h *HuffmanSettings) Train(c [][]byte, dictLen int, level Level) {
 
 	charFreq := make([]int, 256)
 	lenFreq := make([]int, 256)
 	addrFreq := make([]int, 1<<19)
 
-	bDict := backref{bType: initDictBackref(dict)}
-	bShort := backref{bType: shortBackRefType}
-	bLong := backref{bType: longBackRefType}
+	bShortT, bLongT, bDictT := initBackRefTypes(dictLen, level)
+	bShort := backref{bType: bShortT}
+	bLong := backref{bType: bLongT}
+	bDict := backref{bType: bDictT}
 
 	for _, c := range c {
 		in := bitio.NewReader(bytes.NewReader(c))
@@ -47,7 +48,7 @@ func (h *huffmanEncoder) Train(c [][]byte, dict []byte) {
 
 			if b != nil {
 				b.readFrom(in)
-				address := b.offset
+				address := b.address
 				if b != &bDict {
 					address--
 				}
@@ -68,56 +69,8 @@ func (h *huffmanEncoder) Train(c [][]byte, dict []byte) {
 	h.addrLengths = huffman.CreateTree(addrFreq).GetCodeSizes(len(addrFreq))
 }
 
-// estimate TODO Remove
-func (h *huffmanEncoder) nbBits(c, dict []byte) int {
+func (h *HuffmanSettings) Encode(c, dict []byte) []byte {
 
-	bDict := backref{bType: initDictBackref(dict)}
-	bShort := backref{bType: shortBackRefType}
-	bLong := backref{bType: longBackRefType}
-
-	in := bitio.NewReader(bytes.NewReader(c))
-
-	s := in.TryReadByte()
-
-	res := 0
-
-	for in.TryError == nil {
-
-		var b *backref
-		switch s {
-		case symbolShort:
-			// short back ref
-			b = &bShort
-		case symbolLong:
-			// long back ref
-			b = &bLong
-			s = symbolShort
-		case symbolDict:
-			// dict back ref
-			b = &bDict
-		}
-		res += h.charLengths[s]
-
-		if b != nil {
-			b.readFrom(in)
-			address := b.offset
-			if b != &bDict {
-				address--
-			}
-			res += h.lenLengths[b.length-1]
-			res += h.addrLengths[address]
-		}
-
-		s = in.TryReadByte()
-	}
-	if in.TryError != io.EOF {
-		panic(in.TryError)
-	}
-
-	return res
-}
-
-func (h *huffmanEncoder) Encode(c, dict []byte) []byte {
 	panic("TODO")
 }
 
@@ -132,7 +85,7 @@ func intSliceToUint8Slice(in []int) []byte {
 	return res
 }
 
-func (h *huffmanEncoder) Marshal() []byte {
+func (h *HuffmanSettings) Marshal() []byte {
 	var bb bytes.Buffer
 	gz := gzip.NewWriter(&bb)
 	if logAddrLen := bits.TrailingZeros(uint(len(h.addrLengths))); 1<<logAddrLen != len(h.addrLengths) {
@@ -157,7 +110,7 @@ func (h *huffmanEncoder) Marshal() []byte {
 	return bb.Bytes()
 }
 
-func (h *huffmanEncoder) Unmarshal(d []byte) {
+func (h *HuffmanSettings) Unmarshal(d []byte) {
 
 	gz, err := gzip.NewReader(bytes.NewReader(d))
 	closeGz := func() {

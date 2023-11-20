@@ -1,72 +1,41 @@
 package prefix_code
 
 import (
-	"fmt"
 	"github.com/consensys/gnark/frontend"
+	"github.com/consensys/gnark/std/compress"
 	"github.com/consensys/gnark/std/lookup/logderivlookup"
 	"golang.org/x/exp/slices"
 	"sort"
 )
 
-// Decode input bits according to the given symbol lengths. TODO support symbol lengths as variables
-func Decode(api frontend.API, inBits []frontend.Variable, inLen frontend.Variable, symbolLengths []int, out []frontend.Variable) (outLen frontend.Variable, err error) {
-	codeLens := logderivlookup.New(api)
-	codeSymbs := logderivlookup.New(api)
-	{
-		symbs, lens := LengthsToTables(symbolLengths)
-		for i := range symbs {
-			codeLens.Insert(lens[i])
-			codeSymbs.Insert(symbs[i])
-		}
+func Read(api frontend.API, c []frontend.Variable, symbolLengths []int) (valuesTable, lengthTable *logderivlookup.Table) {
+	width := slices.Max(symbolLengths)
+	values := make([]frontend.Variable, len(c))
+	length := make([]frontend.Variable, len(c))
+
+	codeSymbs, codeLengths := LengthsToTables(symbolLengths)
+	codeSymbsTable := compress.SliceToTable(api, codeSymbs)
+	codeLengthsTable := compress.SliceToTable(api, codeLengths)
+
+	curr := frontend.Variable(0)
+
+	for i := 0; i < width && i < len(c); i++ {
+		curr = api.Add(curr, api.Mul(c[i], 1<<uint64(width-1-i)))
 	}
 
-	inIs := make([]frontend.Variable, slices.Max(symbolLengths))
-	in := logderivlookup.New(api)
-	for _, bundled := range bundle(api, inBits, len(inIs)) {
-		in.Insert(bundled)
-	}
+	for i := 0; i < len(c); i++ {
+		values[i] = codeSymbsTable.Lookup(curr)[0]
+		length[i] = codeLengthsTable.Lookup(curr)[0]
 
-	outLen = 0
-	inI := frontend.Variable(0)
-	eof := api.IsZero(inLen)
-	for outI := range out {
-		if outI%1024 == 0 {
-			fmt.Println("compiler at", outI/1024, "KB")
-		}
-
-		symbRead := in.Lookup(inI)[0]
-
-		out[outI] = codeSymbs.Lookup(symbRead)[0]
-		readSymbLen := codeLens.Lookup(symbRead)[0]
-		nextInI := api.Add(inI, readSymbLen)
-		eofNow := api.IsZero(api.Sub(inLen, nextInI))
-		outLen = api.Select(api.Sub(eofNow, eof), outI+1, outLen)
-		eof = eofNow
-		inI = api.MulAcc(inI, api.Sub(1, eof), readSymbLen)
-	}
-
-	return outLen, nil
-}
-
-func bundle(api frontend.API, bits []frontend.Variable, width int) []frontend.Variable {
-
-	out := make([]frontend.Variable, len(bits))
-	out[0] = 0
-
-	for i := 0; i < width && i < len(bits); i++ {
-		out[0] = api.Add(out[0], api.Mul(bits[i], 1<<uint64(width-1-i)))
-	}
-
-	for i := 1; i < len(bits); i++ {
-		// out[i] = 2*out[i-1] - bits[i-1] * 2^width + bits[i+width-1]
+		// curr[i+1] = 2*curr[i] - bits[i] * 2^width + bits[i+width]
 		lsb := frontend.Variable(0)
-		if i+width-1 < len(bits) {
-			lsb = bits[i+width-1]
+		if i+width < len(c) {
+			lsb = c[i+width]
 		}
-		out[i] = api.Add(api.Mul(out[i-1], 2), api.Mul(bits[i-1], -(1<<width)), lsb)
+		curr = api.Add(api.Mul(curr, 2), api.Mul(c[i], -(1<<width)), lsb)
 	}
 
-	return out
+	return compress.SliceToTable(api, values), compress.SliceToTable(api, length)
 }
 
 func LengthsToTables(symbolLengths []int) (symbsTable, lengthsTable []uint64) {
@@ -95,10 +64,12 @@ func LengthsToCodes(symbolLengths []int) []uint64 {
 	code := -1
 	for _, s := range symbs {
 		code++
-		for prevLen < symbolLengths[s] {
-			code <<= 1
-			prevLen++
+		length := symbolLengths[s]
+		if length >= 64 {
+			panic("symbol length too large")
 		}
+		code <<= uint64(length - prevLen)
+		prevLen = length
 		codes[s] = uint64(code)
 	}
 	return codes
