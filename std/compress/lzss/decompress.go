@@ -2,13 +2,10 @@ package lzss
 
 import (
 	"bytes"
-	"io"
-
-	"github.com/consensys/gnark/std/compress"
 	"github.com/icza/bitio"
 )
 
-func DecompressGo(data, dict []byte) (d []byte, err error) {
+func DecompressGo(data, dict []byte, huffman *HuffmanSettings) (d []byte, err error) {
 	// d[i < 0] = Settings.BackRefSettings.Symbol by convention
 	var out bytes.Buffer
 	out.Grow(len(data)*6 + len(dict))
@@ -20,33 +17,26 @@ func DecompressGo(data, dict []byte) (d []byte, err error) {
 	}
 
 	dict = augmentDict(dict)
-	shortBackRefType, longBackRefType, dictBackRefType := initBackRefTypes(len(dict), level)
+	backRefType, dictRefType := initRefTypes(len(dict), level)
 
-	bDict := backref{bType: dictBackRefType}
-	bShort := backref{bType: shortBackRefType}
-	bLong := backref{bType: longBackRefType}
+	dRef := ref{bType: dictRefType}
+	bRef := ref{bType: backRefType}
 
 	// read until startAt and write bytes as is
 
 	s := in.TryReadByte()
 	for in.TryError == nil {
 		switch s {
-		case symbolShort:
+		case symbolBackref:
 			// short back ref
-			bShort.readFrom(in)
-			for i := 0; i < bShort.length; i++ {
-				out.WriteByte(out.Bytes()[out.Len()-bShort.address])
-			}
-		case symbolLong:
-			// long back ref
-			bLong.readFrom(in)
-			for i := 0; i < bLong.length; i++ {
-				out.WriteByte(out.Bytes()[out.Len()-bLong.address])
+			bRef.readFrom(in, huffman)
+			for i := 0; i < bRef.length; i++ {
+				out.WriteByte(out.Bytes()[out.Len()-bRef.address])
 			}
 		case symbolDict:
 			// dict back ref
-			bDict.readFrom(in)
-			out.Write(dict[bDict.address : bDict.address+bDict.length])
+			dRef.readFrom(in, huffman)
+			out.Write(dict[dRef.address : dRef.address+dRef.length])
 		default:
 			out.WriteByte(s)
 		}
@@ -56,17 +46,18 @@ func DecompressGo(data, dict []byte) (d []byte, err error) {
 	return out.Bytes(), nil
 }
 
+/*
 func ReadIntoStream(data, dict []byte, level Level) compress.Stream {
 	in := bitio.NewReader(bytes.NewReader(data))
 
 	wordLen := int(level)
 
 	dict = augmentDict(dict)
-	shortBackRefType, longBackRefType, dictBackRefType := initBackRefTypes(len(dict), level)
+	shortBackRefType,  dictBackRefType := initRefTypes(len(dict), level)
 
-	bDict := backref{bType: dictBackRefType}
-	bShort := backref{bType: shortBackRefType}
-	bLong := backref{bType: longBackRefType}
+	bDict := ref{bType: dictBackRefType}
+	bShort := ref{bType: shortBackRefType}
+	bLong := ref{bType: longBackRefType}
 
 	levelFromData := Level(in.TryReadByte())
 	if levelFromData != NoCompression && levelFromData != level {
@@ -84,9 +75,9 @@ func ReadIntoStream(data, dict []byte, level Level) compress.Stream {
 	for in.TryError == nil {
 		out.WriteNum(int(s), 8/wordLen)
 
-		var b *backref
+		var b *ref
 		switch s {
-		case symbolShort:
+		case symbolBackref:
 			// short back ref
 			b = &bShort
 		case symbolLong:
@@ -112,4 +103,4 @@ func ReadIntoStream(data, dict []byte, level Level) compress.Stream {
 		panic(in.TryError)
 	}
 	return out
-}
+}*/

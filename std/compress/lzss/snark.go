@@ -8,7 +8,7 @@ import (
 	"slices"
 )
 
-// bite size of c needs to be the greatest common denominator of all backref types and 8
+// bite size of c needs to be the greatest common denominator of all ref types and 8
 // d consists of bytes
 func Decompress(api frontend.API, c []frontend.Variable, cLength frontend.Variable, d []frontend.Variable, dict []byte, huffman HuffmanSettings) (dLength frontend.Variable, err error) {
 
@@ -31,13 +31,13 @@ func Decompress(api frontend.API, c []frontend.Variable, cLength frontend.Variab
 	}
 
 	// formatted input
-	chars, charsLen := prefix_code.Read(api, c, huffman.charLengths)
-	lens, lensLen := prefix_code.Read(api, c, huffman.lenLengths)
-	addrs, addrsLen := prefix_code.Read(api, c, huffman.addrLengths)
+	chars, charsLen := prefix_code.Read(api, c, huffman.chars.lengths)
+	lens, lensLen := prefix_code.Read(api, c, huffman.lens.lengths)
+	addrs, addrsLen := prefix_code.Read(api, c, huffman.addrs.lengths)
 	{ // pad
-		width := slices.Max(huffman.charLengths)
+		width := slices.Max(huffman.chars.lengths)
 		compress.PadTables(api, width, lens, lensLen)
-		width += slices.Max(huffman.lenLengths)
+		width += slices.Max(huffman.lens.lengths)
 		compress.PadTables(api, width, addrs, addrsLen)
 	}
 
@@ -52,9 +52,9 @@ func Decompress(api frontend.API, c []frontend.Variable, cLength frontend.Variab
 
 		curr := chars.Lookup(inI)[0]
 
-		currIndicatesCp := api.IsZero(evalPlonkExpr(api, curr, curr, -(symbolShort + symbolDict), 0, 1, symbolShort*symbolDict)) // (curr-A)(curr-B) = curr^2 - (A+B)curr + AB
+		currIndicatesCp := api.IsZero(evalPlonkExpr(api, curr, curr, -(symbolBackref + symbolDict), 0, 1, symbolBackref*symbolDict)) // (curr-A)(curr-B) = curr^2 - (A+B)curr + AB
 		currIndicatesCp = api.Mul(currIndicatesCp, decompressionNotBypassed)
-		currIndicatesDr := api.Mul(currIndicatesCp, api.Sub(curr, symbolShort))
+		currIndicatesDr := api.Mul(currIndicatesCp, api.Sub(curr, symbolBackref))
 		currIndicatesBr := api.Sub(currIndicatesCp, currIndicatesDr)
 
 		currLen := charsLen.Lookup(inI)[0]
@@ -115,10 +115,10 @@ func combineIntoBytes(api frontend.API, c []frontend.Variable, wordNbBits int) [
 	return res
 }
 
-func initAddrTable(api frontend.API, bytes, c []frontend.Variable, wordNbBits int, backrefs []backrefType) *logderivlookup.Table {
+func initAddrTable(api frontend.API, bytes, c []frontend.Variable, wordNbBits int, backrefs []refType) *logderivlookup.Table {
 	for i := range backrefs {
 		if backrefs[i].nbBitsLength != backrefs[0].nbBitsLength {
-			panic("all backref types must have the same length size")
+			panic("all ref types must have the same length size")
 		}
 	}
 	readers := make([]*compress.NumReader, len(backrefs))

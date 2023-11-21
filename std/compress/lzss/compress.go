@@ -21,6 +21,8 @@ type Compressor struct {
 	dictSa    [maxDictSize]int32 // suffix array space.
 
 	level Level
+
+	huffmanSettings *HuffmanSettings
 }
 
 type Level uint8
@@ -41,7 +43,7 @@ const (
 )
 
 // NewCompressor returns a new compressor with the given dictionary
-func NewCompressor(dict []byte, level Level) (*Compressor, error) {
+func NewCompressor(dict []byte, level Level, huffman *HuffmanSettings) (*Compressor, error) {
 	dict = augmentDict(dict)
 	if len(dict) > maxDictSize {
 		return nil, fmt.Errorf("dict size must be <= %d", maxDictSize)
@@ -57,14 +59,12 @@ func NewCompressor(dict []byte, level Level) (*Compressor, error) {
 
 func augmentDict(dict []byte) []byte {
 	found := uint8(0)
-	const mask uint8 = 0b111
+	const mask uint8 = 0b11
 	for _, b := range dict {
 		if b == symbolDict {
 			found |= 0b001
-		} else if b == symbolShort {
+		} else if b == symbolBackref {
 			found |= 0b010
-		} else if b == symbolLong {
-			found |= 0b100
 		} else {
 			continue
 		}
@@ -73,10 +73,10 @@ func augmentDict(dict []byte) []byte {
 		}
 	}
 
-	return append(dict, symbolDict, symbolShort, symbolLong)
+	return append(dict, symbolDict, symbolBackref)
 }
 
-func initBackRefTypes(dictLen int, level Level) (short, long, dict backrefType) {
+func initRefTypes(dictLen int, level Level) (br, dict refType) {
 	wordAlign := func(a int) uint8 {
 		return (uint8(a) + uint8(level) - 1) / uint8(level) * uint8(level)
 	}
@@ -85,9 +85,8 @@ func initBackRefTypes(dictLen int, level Level) (short, long, dict backrefType) 
 			return uint8(a)
 		}
 	}
-	short = newBackRefType(symbolShort, wordAlign(14), 8, false)
-	long = newBackRefType(symbolLong, wordAlign(19), 8, false)
-	dict = newBackRefType(symbolDict, wordAlign(bits.Len(uint(dictLen))), 8, true)
+	br = newRefType(symbolBackref, wordAlign(19), 8, false)
+	dict = newRefType(symbolDict, wordAlign(bits.Len(uint(dictLen))), 8, true)
 	return
 }
 
@@ -110,43 +109,39 @@ func (compressor *Compressor) Compress(d []byte) (c []byte, err error) {
 	// build the index
 	compressor.inputIndex = suffixarray.New(d, compressor.inputSa[:len(d)])
 
-	shortBackRefType, longBackRefType, dictBackRefType := initBackRefTypes(len(compressor.dictData), compressor.level)
+	backRefType, dictRefType := initRefTypes(len(compressor.dictData), compressor.level)
 
-	bDict := backref{bType: dictBackRefType, length: -1, address: -1}
-	bShort := backref{bType: shortBackRefType, length: -1, address: -1}
-	bLong := backref{bType: longBackRefType, length: -1, address: -1}
+	dRef := ref{bType: dictRefType, length: -1, address: -1}
+	bRef := ref{bType: backRefType, length: -1, address: -1}
 
 	fillBackrefs := func(i int, minLen int) bool {
-		bDict.address, bDict.length = compressor.findBackRef(d, i, dictBackRefType, minLen)
-		bShort.address, bShort.length = compressor.findBackRef(d, i, shortBackRefType, minLen)
-		bLong.address, bLong.length = compressor.findBackRef(d, i, longBackRefType, minLen)
-		return !(bDict.length == -1 && bShort.length == -1 && bLong.length == -1)
+		dRef.address, dRef.length = compressor.findBackRef(d, i, dictRefType, minLen)
+		bRef.address, bRef.length = compressor.findBackRef(d, i, backRefType, minLen)
+		return !(dRef.length == -1 && bRef.length == -1)
 	}
-	bestBackref := func() (backref, int) {
-		if bDict.length != -1 && bDict.savings() > bShort.savings() && bDict.savings() > bLong.savings() {
-			return bDict, bDict.savings()
+	bestBackref := func() (ref, int) {
+		if dRef.length != -1 && dRef.savings() > bRef.savings() {
+			return dRef, dRef.savings()
 		}
-		if bShort.length != -1 && bShort.savings() > bLong.savings() {
-			return bShort, bShort.savings()
-		}
-		return bLong, bLong.savings()
+
+		return bRef, bRef.savings()
 	}
 
 	for i := 0; i < len(d); {
 		if !canEncodeSymbol(d[i]) {
-			// we must find a backref.
+			// we must find a ref.
 			if !fillBackrefs(i, 1) {
-				// we didn't find a backref but can't write the symbol directly
+				// we didn't find a ref but can't write the symbol directly
 				return nil, fmt.Errorf("could not find a backref at index %d", i)
 			}
 			best, _ := bestBackref()
-			best.writeTo(compressor.bw, i)
+			best.writeTo(compressor.bw, compressor.huffmanSettings, i)
 			i += best.length
 			continue
 		}
 		if !fillBackrefs(i, -1) {
-			// we didn't find a backref, let's write the symbol directly
-			compressor.writeByte(d[i])
+			// we didn't find a ref, let's write the symbol directly
+			compressor.huffmanSettings.chars.write(compressor.bw, uint64(d[i]))
 			i++
 			continue
 		}
@@ -155,20 +150,20 @@ func (compressor *Compressor) Compress(d []byte) (c []byte, err error) {
 		if i+1 < len(d) {
 			if fillBackrefs(i+1, bestAtI.length+1) {
 				if newBest, newSavings := bestBackref(); newSavings > bestSavings {
-					// we found an even better backref
-					compressor.writeByte(d[i])
+					// we found an even better ref
+					compressor.huffmanSettings.chars.write(compressor.bw, uint64(d[i]))
 					i++
 
-					// then emit the backref at i+1
+					// then emit the ref at i+1
 					bestSavings = newSavings
 					bestAtI = newBest
 
-					// can we find an even better backref?
+					// can we find an even better ref?
 					if canEncodeSymbol(d[i]) && i+1 < len(d) {
 						if fillBackrefs(i+1, bestAtI.length+1) {
-							// we found an even better backref
+							// we found an even better ref
 							if newBest, newSavings := bestBackref(); newSavings > bestSavings {
-								compressor.writeByte(d[i])
+								compressor.huffmanSettings.chars.write(compressor.bw, uint64(d[i]))
 								i++
 
 								// bestSavings = newSavings
@@ -181,14 +176,14 @@ func (compressor *Compressor) Compress(d []byte) (c []byte, err error) {
 				// maybe at i+2 ? (we already tried i+1)
 				if fillBackrefs(i+2, bestAtI.length+2) {
 					if newBest, newSavings := bestBackref(); newSavings > bestSavings {
-						// we found a better backref
+						// we found a better ref
 						// write the symbol at i
 						compressor.writeByte(d[i])
 						i++
 						compressor.writeByte(d[i])
 						i++
 
-						// then emit the backref at i+2
+						// then emit the ref at i+2
 						bestAtI = newBest
 						// bestSavings = newSavings
 					}
@@ -196,7 +191,7 @@ func (compressor *Compressor) Compress(d []byte) (c []byte, err error) {
 			}
 		}
 
-		bestAtI.writeTo(compressor.bw, i)
+		bestAtI.writeTo(compressor.bw, compressor.huffmanSettings, i)
 		i += bestAtI.length
 	}
 
@@ -212,7 +207,7 @@ func (compressor *Compressor) Compress(d []byte) (c []byte, err error) {
 
 // canEncodeSymbol returns true if the symbol can be encoded directly
 func canEncodeSymbol(b byte) bool {
-	return b != symbolDict && b != symbolShort && b != symbolLong
+	return b != symbolDict && b != symbolBackref
 }
 
 func (compressor *Compressor) writeByte(b byte) {
@@ -225,7 +220,7 @@ func (compressor *Compressor) writeByte(b byte) {
 // findBackRef attempts to find a backref in the window [i-brAddressRange, i+brLengthRange]
 // if no backref is found, it returns -1, -1
 // else returns the address and length of the backref
-func (compressor *Compressor) findBackRef(data []byte, i int, bType backrefType, minLength int) (addr, length int) {
+func (compressor *Compressor) findBackRef(data []byte, i int, bType refType, minLength int) (addr, length int) {
 	if minLength == -1 {
 		minLength = bType.nbBytesBackRef
 	}

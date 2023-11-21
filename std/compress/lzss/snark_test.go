@@ -54,13 +54,13 @@ func TestNoCompressionSnark(t *testing.T) {
 
 func Test4ZerosBackref(t *testing.T) {
 
-	shortBackRefType, longBackRefType, _ := initBackRefTypes(0, BestCompression)
+	shortBackRefType, longBackRefType, _ := initRefTypes(0, BestCompression)
 
-	testDecompressionSnark(t, nil, BestCompression, 0, backref{
+	testDecompressionSnark(t, nil, BestCompression, 0, ref{
 		address: 0,
 		length:  2,
 		bType:   shortBackRefType,
-	}, backref{
+	}, ref{
 		address: 1,
 		length:  1,
 		bType:   longBackRefType,
@@ -145,7 +145,7 @@ func testDecompressionSnark(t *testing.T, dict []byte, level Level, compressedSt
 				assert.NoError(t, w.WriteByte(b))
 			}
 			i += len(v)
-		case backref:
+		case ref:
 			v.writeTo(w, i)
 			i += v.length
 		default:

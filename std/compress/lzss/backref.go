@@ -11,7 +11,7 @@ const (
 	maxDictSize  = 1 << 22 // 4Mb
 )
 
-type backrefType struct {
+type refType struct {
 	delimiter      byte
 	nbBitsAddress  uint8
 	nbBitsLength   uint8
@@ -22,8 +22,8 @@ type backrefType struct {
 	dictOnly       bool
 }
 
-func newBackRefType(symbol byte, nbBitsAddress, nbBitsLength uint8, dictOnly bool) backrefType {
-	return backrefType{
+func newRefType(symbol byte, nbBitsAddress, nbBitsLength uint8, dictOnly bool) refType {
+	return refType{
 		delimiter:      symbol,
 		nbBitsAddress:  nbBitsAddress,
 		nbBitsLength:   nbBitsLength,
@@ -36,37 +36,37 @@ func newBackRefType(symbol byte, nbBitsAddress, nbBitsLength uint8, dictOnly boo
 }
 
 const (
-	symbolDict  = 0xFF
-	symbolShort = 0xFE
-	symbolLong  = 0xFD
+	symbolDict    = 0xFF
+	symbolBackref = 0xFE
 )
 
-type backref struct {
+type ref struct {
 	address int
 	length  int
-	bType   backrefType
+	bType   refType
 }
 
-func (b *backref) writeTo(w *bitio.Writer, i int) {
-	w.TryWriteByte(b.bType.delimiter)
-	w.TryWriteBits(uint64(b.length-1), b.bType.nbBitsLength)
-	if b.bType.dictOnly {
-		w.TryWriteBits(uint64(b.address), b.bType.nbBitsAddress)
-	} else {
-		w.TryWriteBits(uint64(i-b.address-1), b.bType.nbBitsAddress)
+func (b *ref) writeTo(w *bitio.Writer, huffman *HuffmanSettings, i int) {
+	huffman.chars.write(w, uint64(b.bType.delimiter))
+	huffman.lens.write(w, uint64(b.length-1)) // TODO -1 unnecessary with huffman
+	address := uint64(b.address)
+	if !b.bType.dictOnly {
+		address = uint64(i - b.address - 1)
+	}
+	huffman.addrs.write(w, address)
+}
+
+func (b *ref) readFrom(r *bitio.Reader, huffman *HuffmanSettings) {
+
+	b.length = int(huffman.lens.read(r)) + 1
+	b.address = int(huffman.addrs.read(r))
+	if !b.bType.dictOnly {
+		b.address++
 	}
 }
 
-func (b *backref) readFrom(r *bitio.Reader) {
-	b.length = int(r.TryReadBits(b.bType.nbBitsLength)) + 1
-	if b.bType.dictOnly {
-		b.address = int(r.TryReadBits(b.bType.nbBitsAddress))
-	} else {
-		b.address = int(r.TryReadBits(b.bType.nbBitsAddress)) + 1
-	}
-}
-
-func (b *backref) savings() int {
+// TODO: Huffman-aware savings function
+func (b *ref) savings() int {
 	if b.length == -1 {
 		return math.MinInt // -1 is a special value
 	}
