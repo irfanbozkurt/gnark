@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/hex"
 	"fmt"
+	"github.com/icza/bitio"
+	"github.com/stretchr/testify/assert"
 	"os"
 	"testing"
 
@@ -26,6 +28,10 @@ func testCompressionRoundTrip(t *testing.T, d []byte) {
 	if !bytes.Equal(d, dBack) {
 		t.Fatal("round trip failed")
 	}
+}
+
+func TestFourZeros(t *testing.T) {
+	testCompressionRoundTrip(t, []byte{0, 0, 0, 0})
 }
 
 func Test8Zeros(t *testing.T) {
@@ -208,6 +214,38 @@ func compresslzss_v1(compressor *Compressor, data []byte) (compressResult, error
 	}, nil
 }
 
+func TestBackRefRoundTripNoHuffman(t *testing.T) {
+	br := ref{
+		bType: refType{
+			delimiter:     symbolDict,
+			nbBitsAddress: 8,
+			nbBitsLength:  8,
+			dictOnly:      true,
+		},
+		address: 2,
+		length:  4,
+	}
+
+	var huffman HuffmanSettings
+	huffman.chars.Lengths = repeat(8, 256)
+	huffman.lens.Lengths = repeat(8, 256)
+	huffman.addrs.Lengths = repeat(8, 256)
+	huffman.ensureCodesNotNil() // for writing
+	huffman.ensureTreesNotNil() // for reading
+
+	var bb bytes.Buffer
+	w := bitio.NewWriter(&bb)
+
+	br.writeTo(w, &huffman, 0)
+
+	assert.NoError(t, w.Close())
+
+	r := bitio.NewReader(bytes.NewReader(bb.Bytes()[1:]))
+	brb := ref{bType: br.bType}
+	brb.readFrom(r, &huffman)
+	assert.Equal(t, br, brb)
+}
+
 func getDictionary() []byte {
 	d, err := os.ReadFile("./testdata/dict_naive")
 	if err != nil {
@@ -219,9 +257,9 @@ func getDictionary() []byte {
 func getNoHuffman() *HuffmanSettings {
 	var res HuffmanSettings
 
-	res.chars.lengths = repeat(8, 256)
-	res.lens.lengths = repeat(8, 256)
-	res.addrs.lengths = repeat(8, 1<<19)
+	res.chars.Lengths = repeat(8, 256)
+	res.lens.Lengths = repeat(8, 256)
+	res.addrs.Lengths = repeat(8, 1<<19)
 
 	return &res
 }

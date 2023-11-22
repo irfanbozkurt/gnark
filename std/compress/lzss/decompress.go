@@ -16,6 +16,8 @@ func DecompressGo(data, dict []byte, huffman *HuffmanSettings) (d []byte, err er
 		return data[1:], nil
 	}
 
+	huffman.ensureTreesNotNil()
+
 	dict = augmentDict(dict)
 	backRefType, dictRefType := initRefTypes(len(dict), level)
 

@@ -11,29 +11,7 @@ import (
 )
 
 type HuffmanSettings struct {
-	chars, lens, addrs huffmanTable
-}
-
-type huffmanTable struct {
-	lengths []int // TODO turn into []uint8?
-	symbs   []uint64
-	tree    *prefix_code.Node
-}
-
-func (h *huffmanTable) write(w *bitio.Writer, s uint64) {
-	w.TryWriteBits(h.symbs[s], uint8(h.lengths[s]))
-}
-
-func (h *huffmanTable) read(r *bitio.Reader) uint64 {
-	curr := h.tree
-	for curr.Left != nil {
-		if r.TryReadBool() {
-			curr = curr.Right
-		} else {
-			curr = curr.Left
-		}
-	}
-	return curr.Val
+	chars, lens, addrs prefix_code.Table
 }
 
 func (h *HuffmanSettings) Train(c [][]byte, dictLen int, level Level) {
@@ -82,9 +60,9 @@ func (h *HuffmanSettings) Train(c [][]byte, dictLen int, level Level) {
 
 	}
 
-	h.chars.lengths = huffman.CreateTree(charFreq).GetCodeSizes(256)
-	h.lens.lengths = huffman.CreateTree(lenFreq).GetCodeSizes(256)
-	h.addrs.lengths = huffman.CreateTree(addrFreq).GetCodeSizes(len(addrFreq))
+	h.chars.Lengths = huffman.CreateTree(charFreq).GetCodeSizes(256)
+	h.lens.Lengths = huffman.CreateTree(lenFreq).GetCodeSizes(256)
+	h.addrs.Lengths = huffman.CreateTree(addrFreq).GetCodeSizes(len(addrFreq))
 }
 
 func intSliceToUint8Slice(in []int) []byte {
@@ -101,13 +79,13 @@ func intSliceToUint8Slice(in []int) []byte {
 func (h *HuffmanSettings) Marshal() []byte {
 	var bb bytes.Buffer
 	gz := gzip.NewWriter(&bb)
-	if logAddrLen := bits.TrailingZeros(uint(len(h.addrs.lengths))); 1<<logAddrLen != len(h.addrs.lengths) {
+	if logAddrLen := bits.TrailingZeros(uint(len(h.addrs.Lengths))); 1<<logAddrLen != len(h.addrs.Lengths) {
 		panic("addr length not power of 2")
 	} else if _, err := gz.Write([]byte{byte(logAddrLen)}); err != nil {
 		panic(err)
 	}
 
-	for _, s := range [][]int{h.chars.lengths, h.lens.lengths, h.addrs.lengths} {
+	for _, s := range [][]int{h.chars.Lengths, h.lens.Lengths, h.addrs.Lengths} {
 		for _, i := range s {
 			if i > 255 || i < 0 {
 				panic("invalid value")
@@ -140,12 +118,12 @@ func (h *HuffmanSettings) Unmarshal(d []byte) {
 	if _, err = gz.Read(buf[:]); err != nil {
 		panic(err)
 	} else {
-		h.addrs.lengths = make([]int, 1<<buf[0])
+		h.addrs.Lengths = make([]int, 1<<buf[0])
 	}
-	h.chars.lengths = make([]int, 256)
-	h.lens.lengths = make([]int, 256)
+	h.chars.Lengths = make([]int, 256)
+	h.lens.Lengths = make([]int, 256)
 
-	for _, s := range [][]int{h.chars.lengths, h.lens.lengths, h.addrs.lengths} {
+	for _, s := range [][]int{h.chars.Lengths, h.lens.Lengths, h.addrs.Lengths} {
 		for i := range s {
 			if _, err = gz.Read(buf[:]); err != nil {
 				panic(err)
@@ -155,14 +133,14 @@ func (h *HuffmanSettings) Unmarshal(d []byte) {
 	}
 }
 
-func (h *HuffmanSettings) setSymbs() {
-	h.chars.symbs = prefix_code.LengthsToCodes(h.chars.lengths)
-	h.lens.symbs = prefix_code.LengthsToCodes(h.lens.lengths)
-	h.addrs.symbs = prefix_code.LengthsToCodes(h.addrs.lengths)
+func (h *HuffmanSettings) ensureCodesNotNil() {
+	h.chars.EnsureCodesNotNil()
+	h.lens.EnsureCodesNotNil()
+	h.addrs.EnsureCodesNotNil()
 }
 
-func (h *HuffmanSettings) setTrees() {
-	h.chars.tree = prefix_code.NewTreeFromLengths(h.chars.lengths)
-	h.lens.tree = prefix_code.NewTreeFromLengths(h.lens.lengths)
-	h.addrs.tree = prefix_code.NewTreeFromLengths(h.addrs.lengths)
+func (h *HuffmanSettings) ensureTreesNotNil() {
+	h.chars.EnsureTreeNotNil()
+	h.lens.EnsureTreeNotNil()
+	h.addrs.EnsureTreeNotNil()
 }

@@ -3,7 +3,7 @@ package prefix_code
 /*
 func TestDecodeOneOne(t *testing.T) {
 	assignment := huffmanTestCircuit{
-		lengths:    []int{1},
+		Lengths:    []int{1},
 		Bits:       []frontend.Variable{0},
 		Symbols:    []frontend.Variable{0},
 		BitsLen:    1,
@@ -14,7 +14,7 @@ func TestDecodeOneOne(t *testing.T) {
 
 func TestDecodeTwoOnes(t *testing.T) {
 	assignment := huffmanTestCircuit{
-		lengths:    []int{1},
+		Lengths:    []int{1},
 		Bits:       []frontend.Variable{0, 0},
 		Symbols:    []frontend.Variable{0, 0},
 		BitsLen:    2,
@@ -31,7 +31,7 @@ func BenchmarkDecodeBlob(b *testing.B) {
 	require.NoError(b, err)
 
 	circuit := huffmanTestCircuit{
-		lengths: getIntColumn(csvRecs, 1),
+		Lengths: getIntColumn(csvRecs, 1),
 		Bits:    make([]frontend.Variable, 114*1024*8),
 		Symbols: make([]frontend.Variable, 125*1024),
 	}
@@ -45,7 +45,7 @@ func BenchmarkDecodeBlob(b *testing.B) {
 
 func TestDecodeTwoSymbs(t *testing.T) {
 	assignment := huffmanTestCircuit{
-		lengths:    []int{1, 2},
+		Lengths:    []int{1, 2},
 		Bits:       []frontend.Variable{0, 1, 0},
 		Symbols:    []frontend.Variable{0, 1},
 		BitsLen:    3,
@@ -55,14 +55,14 @@ func TestDecodeTwoSymbs(t *testing.T) {
 }
 
 type huffmanTestCircuit struct {
-	lengths             []int
+	Lengths             []int
 	Bits, Symbols       []frontend.Variable
 	BitsLen, SymbolsLen frontend.Variable
 }
 
 func (c *huffmanTestCircuit) hollow() frontend.Circuit {
 	return &huffmanTestCircuit{
-		lengths: c.lengths,
+		Lengths: c.Lengths,
 		Bits:    make([]frontend.Variable, len(c.Bits)),
 		Symbols: make([]frontend.Variable, len(c.Symbols)),
 	}
@@ -70,7 +70,7 @@ func (c *huffmanTestCircuit) hollow() frontend.Circuit {
 
 func (c *huffmanTestCircuit) Define(api frontend.API) error {
 	symbols := make([]frontend.Variable, len(c.Symbols))
-	l, err := Decode(api, c.Bits, c.BitsLen, c.lengths, symbols)
+	l, err := Decode(api, c.Bits, c.BitsLen, c.Lengths, symbols)
 	if err != nil {
 		return err
 	}

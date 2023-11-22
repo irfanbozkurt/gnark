@@ -54,6 +54,9 @@ func NewCompressor(dict []byte, level Level, huffman *HuffmanSettings) (*Compres
 	c.buf.Grow(maxInputSize)
 	c.dictIndex = suffixarray.New(c.dictData, c.dictSa[:len(c.dictData)])
 	c.level = level
+	huffman.ensureCodesNotNil()
+	c.huffmanSettings = huffman
+
 	return c, nil
 }
 
@@ -141,7 +144,7 @@ func (compressor *Compressor) Compress(d []byte) (c []byte, err error) {
 		}
 		if !fillBackrefs(i, -1) {
 			// we didn't find a ref, let's write the symbol directly
-			compressor.huffmanSettings.chars.write(compressor.bw, uint64(d[i]))
+			compressor.huffmanSettings.chars.Write(compressor.bw, uint64(d[i]))
 			i++
 			continue
 		}
@@ -151,7 +154,7 @@ func (compressor *Compressor) Compress(d []byte) (c []byte, err error) {
 			if fillBackrefs(i+1, bestAtI.length+1) {
 				if newBest, newSavings := bestBackref(); newSavings > bestSavings {
 					// we found an even better ref
-					compressor.huffmanSettings.chars.write(compressor.bw, uint64(d[i]))
+					compressor.huffmanSettings.chars.Write(compressor.bw, uint64(d[i]))
 					i++
 
 					// then emit the ref at i+1
@@ -163,7 +166,7 @@ func (compressor *Compressor) Compress(d []byte) (c []byte, err error) {
 						if fillBackrefs(i+1, bestAtI.length+1) {
 							// we found an even better ref
 							if newBest, newSavings := bestBackref(); newSavings > bestSavings {
-								compressor.huffmanSettings.chars.write(compressor.bw, uint64(d[i]))
+								compressor.huffmanSettings.chars.Write(compressor.bw, uint64(d[i]))
 								i++
 
 								// bestSavings = newSavings

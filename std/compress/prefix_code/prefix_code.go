@@ -1,6 +1,7 @@
 package prefix_code
 
 import (
+	"github.com/icza/bitio"
 	"golang.org/x/exp/slices"
 	"sort"
 )
@@ -18,11 +19,17 @@ func NewTreeFromLengths(symbolLengths []int) *Node {
 	root := Node{Val: internalNodeVal}
 
 	symbsTable, lengthsTable := LengthsToTables(symbolLengths)
-	for i, symb := range symbsTable {
-		length := int(lengthsTable[i])
+	for code, symb := range symbsTable {
+		length := int(lengthsTable[code])
 		curr := &root
 		for d := 0; d < length; d++ {
-			bitAtD := (i >> (length - 1 - d)) & 1
+			bitAtD := (code >> (length - 1 - d)) & 1
+
+			/*if d == length-1 {
+				curr.Val = symb
+				break
+			}*/
+
 			if bitAtD == 0 {
 				if curr.Left == nil {
 					curr.Left = &Node{Val: internalNodeVal}
@@ -88,4 +95,38 @@ func _range(i int) []int {
 		out[j] = j
 	}
 	return out
+}
+
+type Table struct {
+	Lengths []int // TODO turn into []uint8?
+	codes   []uint64
+	tree    *Node
+}
+
+func (h *Table) Write(w *bitio.Writer, s uint64) {
+	w.TryWriteBits(h.codes[s], uint8(h.Lengths[s]))
+}
+
+func (h *Table) Read(r *bitio.Reader) uint64 {
+	curr := h.tree
+	for curr.Left != nil {
+		if r.TryReadBool() {
+			curr = curr.Right
+		} else {
+			curr = curr.Left
+		}
+	}
+	return curr.Val
+}
+
+func (h *Table) EnsureCodesNotNil() {
+	if h.codes == nil {
+		h.codes = LengthsToCodes(h.Lengths)
+	}
+}
+
+func (h *Table) EnsureTreeNotNil() {
+	if h.tree == nil {
+		h.tree = NewTreeFromLengths(h.Lengths)
+	}
 }

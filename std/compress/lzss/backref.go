@@ -47,19 +47,19 @@ type ref struct {
 }
 
 func (b *ref) writeTo(w *bitio.Writer, huffman *HuffmanSettings, i int) {
-	huffman.chars.write(w, uint64(b.bType.delimiter))
-	huffman.lens.write(w, uint64(b.length-1)) // TODO -1 unnecessary with huffman
+	huffman.chars.Write(w, uint64(b.bType.delimiter))
+	huffman.lens.Write(w, uint64(b.length-1)) // TODO -1 unnecessary with huffman
 	address := uint64(b.address)
 	if !b.bType.dictOnly {
 		address = uint64(i - b.address - 1)
 	}
-	huffman.addrs.write(w, address)
+	huffman.addrs.Write(w, address)
 }
 
 func (b *ref) readFrom(r *bitio.Reader, huffman *HuffmanSettings) {
 
-	b.length = int(huffman.lens.read(r)) + 1
-	b.address = int(huffman.addrs.read(r))
+	b.length = int(huffman.lens.Read(r)) + 1
+	b.address = int(huffman.addrs.Read(r))
 	if !b.bType.dictOnly {
 		b.address++
 	}
