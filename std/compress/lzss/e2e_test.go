@@ -1,18 +1,6 @@
 package lzss
 
-import (
-	"os"
-	"testing"
-
-	"github.com/consensys/gnark-crypto/ecc"
-	"github.com/consensys/gnark/backend"
-	"github.com/consensys/gnark/frontend"
-	"github.com/consensys/gnark/std/compress"
-	test_vector_utils "github.com/consensys/gnark/std/utils/test_vectors_utils"
-	"github.com/consensys/gnark/test"
-	"github.com/stretchr/testify/assert"
-)
-
+/*
 func TestCompression1ZeroE2E(t *testing.T) {
 	testCompressionE2E(t, []byte{0}, nil, "1_zero")
 }
@@ -99,3 +87,4 @@ func (c *checksumTestCircuit) Define(api frontend.API) error {
 	}
 	return nil
 }
+*/

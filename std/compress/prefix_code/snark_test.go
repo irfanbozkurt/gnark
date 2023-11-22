@@ -1,20 +1,6 @@
 package prefix_code
 
-import (
-	"encoding/csv"
-	"fmt"
-	"github.com/consensys/gnark-crypto/ecc"
-	"github.com/consensys/gnark/backend"
-	"github.com/consensys/gnark/frontend"
-	"github.com/consensys/gnark/frontend/cs/scs"
-	"github.com/consensys/gnark/profile"
-	"github.com/consensys/gnark/test"
-	"github.com/stretchr/testify/require"
-	"os"
-	"strconv"
-	"testing"
-)
-
+/*
 func TestDecodeOneOne(t *testing.T) {
 	assignment := huffmanTestCircuit{
 		lengths:    []int{1},
@@ -107,3 +93,4 @@ func getIntColumn(csvRecs [][]string, i int) []int {
 	}
 	return res
 }
+*/

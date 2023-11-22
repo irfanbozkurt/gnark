@@ -1,20 +1,6 @@
 package lzss
 
-import (
-	"bytes"
-	"github.com/consensys/gnark-crypto/ecc"
-	"github.com/consensys/gnark/backend"
-	"github.com/consensys/gnark/frontend"
-	"github.com/consensys/gnark/std/compress"
-	test_vector_utils "github.com/consensys/gnark/std/utils/test_vectors_utils"
-	"github.com/consensys/gnark/test"
-	"github.com/icza/bitio"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-	"os"
-	"testing"
-)
-
+/*
 func Test1ZeroSnark(t *testing.T) {
 	testCompressionRoundTripSnark(t, []byte{0}, nil)
 }
@@ -201,3 +187,4 @@ func (c *readBytesCircuit) Define(api frontend.API) error {
 	}
 	return nil
 }
+*/

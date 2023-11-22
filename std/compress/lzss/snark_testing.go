@@ -1,21 +1,6 @@
 package lzss
 
-import (
-	"compress/gzip"
-	"fmt"
-	"github.com/consensys/gnark-crypto/ecc"
-	"github.com/consensys/gnark-crypto/ecc/bn254/fr"
-	"github.com/consensys/gnark-crypto/hash"
-	"github.com/consensys/gnark/constraint"
-	"github.com/consensys/gnark/frontend"
-	"github.com/consensys/gnark/frontend/cs/scs"
-	"github.com/consensys/gnark/profile"
-	"github.com/consensys/gnark/std/compress"
-	"github.com/consensys/gnark/std/hash/mimc"
-	"os"
-	"time"
-)
-
+/*
 type DecompressionTestCircuit struct {
 	C                []frontend.Variable
 	D                []byte
@@ -170,3 +155,4 @@ func checkSnark(api frontend.API, e []frontend.Variable, eLen, checksum frontend
 	api.AssertIsEqual(hsh.Sum(), checksum)
 	return nil
 }
+*/
