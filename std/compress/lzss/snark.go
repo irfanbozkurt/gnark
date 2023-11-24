@@ -10,7 +10,7 @@ import (
 
 // bite size of c needs to be the greatest common denominator of all ref types and 8
 // d consists of bytes
-func Decompress(api frontend.API, c []frontend.Variable, cLength frontend.Variable, d []frontend.Variable, dict []byte, huffman HuffmanSettings) (dLength frontend.Variable, err error) {
+func Decompress(api frontend.API, c []frontend.Variable, cLength frontend.Variable, d []frontend.Variable, dict []byte, pfc *PrefixCode) (dLength frontend.Variable, err error) {
 
 	dict = augmentDict(dict)
 
@@ -31,13 +31,13 @@ func Decompress(api frontend.API, c []frontend.Variable, cLength frontend.Variab
 	}
 
 	// formatted input
-	chars, charsLen := prefix_code.Read(api, c, huffman.chars.Lengths)
-	lens, lensLen := prefix_code.Read(api, c, huffman.lens.Lengths)
-	addrs, addrsLen := prefix_code.Read(api, c, huffman.addrs.Lengths)
+	chars, charsLen := prefix_code.Read(api, c, pfc.chars.Lengths)
+	lens, lensLen := prefix_code.Read(api, c, pfc.lens.Lengths)
+	addrs, addrsLen := prefix_code.Read(api, c, pfc.addrs.Lengths)
 	{ // pad
-		width := slices.Max(huffman.chars.Lengths)
+		width := slices.Max(pfc.chars.Lengths)
 		compress.PadTables(api, width, lens, lensLen)
-		width += slices.Max(huffman.lens.Lengths)
+		width += slices.Max(pfc.lens.Lengths)
 		compress.PadTables(api, width, addrs, addrsLen)
 	}
 

@@ -10,11 +10,11 @@ import (
 	"math/bits"
 )
 
-type HuffmanSettings struct {
+type PrefixCode struct {
 	chars, lens, addrs prefix_code.Table
 }
 
-func (h *HuffmanSettings) Train(c [][]byte, dictLen int, level Level) {
+func (h *PrefixCode) TrainHuffman(c [][]byte, dictLen int, level Level) {
 
 	charFreq := make([]int, 256)
 	lenFreq := make([]int, 256)
@@ -76,7 +76,7 @@ func intSliceToUint8Slice(in []int) []byte {
 	return res
 }
 
-func (h *HuffmanSettings) Marshal() []byte {
+func (h *PrefixCode) Marshal() []byte {
 	var bb bytes.Buffer
 	gz := gzip.NewWriter(&bb)
 	if logAddrLen := bits.TrailingZeros(uint(len(h.addrs.Lengths))); 1<<logAddrLen != len(h.addrs.Lengths) {
@@ -101,7 +101,7 @@ func (h *HuffmanSettings) Marshal() []byte {
 	return bb.Bytes()
 }
 
-func (h *HuffmanSettings) Unmarshal(d []byte) {
+func (h *PrefixCode) Unmarshal(d []byte) {
 
 	gz, err := gzip.NewReader(bytes.NewReader(d))
 	closeGz := func() {
@@ -133,13 +133,13 @@ func (h *HuffmanSettings) Unmarshal(d []byte) {
 	}
 }
 
-func (h *HuffmanSettings) ensureCodesNotNil() {
+func (h *PrefixCode) ensureCodesNotNil() {
 	h.chars.EnsureCodesNotNil()
 	h.lens.EnsureCodesNotNil()
 	h.addrs.EnsureCodesNotNil()
 }
 
-func (h *HuffmanSettings) ensureTreesNotNil() {
+func (h *PrefixCode) ensureTreesNotNil() {
 	h.chars.EnsureTreeNotNil()
 	h.lens.EnsureTreeNotNil()
 	h.addrs.EnsureTreeNotNil()

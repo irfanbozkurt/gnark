@@ -1,19 +1,31 @@
 package lzss
 
-/*
+import (
+	"fmt"
+	"github.com/consensys/gnark-crypto/ecc"
+	"github.com/consensys/gnark-crypto/hash"
+	"github.com/consensys/gnark/constraint"
+	"github.com/consensys/gnark/frontend"
+	"github.com/consensys/gnark/frontend/cs/scs"
+	"github.com/consensys/gnark/profile"
+	"github.com/consensys/gnark/std/compress"
+	"os"
+	"time"
+)
+
 type DecompressionTestCircuit struct {
 	C                []frontend.Variable
 	D                []byte
 	Dict             []byte
 	CLength          frontend.Variable
 	CheckCorrectness bool
-	Level            Level
+	Pfc              *PrefixCode
 }
 
 func (c *DecompressionTestCircuit) Define(api frontend.API) error {
 	dBack := make([]frontend.Variable, len(c.D)) // TODO Try smaller constants
 	api.Println("maxLen(dBack)", len(dBack))
-	dLen, err := Decompress(api, c.C, c.CLength, dBack, c.Dict, c.Level)
+	dLen, err := Decompress(api, c.C, c.CLength, dBack, c.Dict, c.Pfc)
 	if err != nil {
 		return err
 	}
@@ -28,7 +40,7 @@ func (c *DecompressionTestCircuit) Define(api frontend.API) error {
 	return nil
 }
 
-func BenchCompressionE2ECompilation(dict []byte, name string) (constraint.ConstraintSystem, error) {
+func BenchCompressionE2ECompilation(dict []byte, name string, huffman *PrefixCode) (constraint.ConstraintSystem, error) {
 	d, err := os.ReadFile(name + "/data.bin")
 	if err != nil {
 		return nil, err
@@ -36,7 +48,7 @@ func BenchCompressionE2ECompilation(dict []byte, name string) (constraint.Constr
 
 	// compress
 
-	compressor, err := NewCompressor(dict, GoodCompression)
+	compressor, err := NewCompressor(dict, BestCompression, huffman)
 	if err != nil {
 		return nil, err
 	}
@@ -46,7 +58,7 @@ func BenchCompressionE2ECompilation(dict []byte, name string) (constraint.Constr
 		return nil, err
 	}
 
-	cStream := ReadIntoStream(c, dict, GoodCompression)
+	cStream := ReadIntoStream(c, dict, BestCompression)
 
 	circuit := compressionCircuit{
 		C:     make([]frontend.Variable, cStream.Len()),
@@ -155,4 +167,3 @@ func checkSnark(api frontend.API, e []frontend.Variable, eLen, checksum frontend
 	api.AssertIsEqual(hsh.Sum(), checksum)
 	return nil
 }
-*/

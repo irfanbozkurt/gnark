@@ -46,7 +46,7 @@ type ref struct {
 	bType   refType
 }
 
-func (b *ref) writeTo(w *bitio.Writer, huffman *HuffmanSettings, i int) {
+func (b *ref) writeTo(w *bitio.Writer, huffman *PrefixCode, i int) {
 	huffman.chars.Write(w, uint64(b.bType.delimiter))
 	huffman.lens.Write(w, uint64(b.length-1)) // TODO -1 unnecessary with huffman
 	address := uint64(b.address)
@@ -56,7 +56,7 @@ func (b *ref) writeTo(w *bitio.Writer, huffman *HuffmanSettings, i int) {
 	huffman.addrs.Write(w, address)
 }
 
-func (b *ref) readFrom(r *bitio.Reader, huffman *HuffmanSettings) {
+func (b *ref) readFrom(r *bitio.Reader, huffman *PrefixCode) {
 
 	b.length = int(huffman.lens.Read(r)) + 1
 	b.address = int(huffman.addrs.Read(r))
@@ -65,7 +65,7 @@ func (b *ref) readFrom(r *bitio.Reader, huffman *HuffmanSettings) {
 	}
 }
 
-// TODO: Huffman-aware savings function
+// TODO: Pfc-aware savings function
 func (b *ref) savings() int {
 	if b.length == -1 {
 		return math.MinInt // -1 is a special value

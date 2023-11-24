@@ -5,7 +5,7 @@ import (
 	"github.com/icza/bitio"
 )
 
-func DecompressGo(data, dict []byte, huffman *HuffmanSettings) (d []byte, err error) {
+func DecompressGo(data, dict []byte, pfc *PrefixCode) (d []byte, err error) {
 	// d[i < 0] = Settings.BackRefSettings.Symbol by convention
 	var out bytes.Buffer
 	out.Grow(len(data)*6 + len(dict))
@@ -16,7 +16,7 @@ func DecompressGo(data, dict []byte, huffman *HuffmanSettings) (d []byte, err er
 		return data[1:], nil
 	}
 
-	huffman.ensureTreesNotNil()
+	pfc.ensureTreesNotNil()
 
 	dict = augmentDict(dict)
 	backRefType, dictRefType := initRefTypes(len(dict), level)
@@ -31,13 +31,13 @@ func DecompressGo(data, dict []byte, huffman *HuffmanSettings) (d []byte, err er
 		switch s {
 		case symbolBackref:
 			// short back ref
-			bRef.readFrom(in, huffman)
+			bRef.readFrom(in, pfc)
 			for i := 0; i < bRef.length; i++ {
 				out.WriteByte(out.Bytes()[out.Len()-bRef.address])
 			}
 		case symbolDict:
 			// dict back ref
-			dRef.readFrom(in, huffman)
+			dRef.readFrom(in, pfc)
 			out.Write(dict[dRef.address : dRef.address+dRef.length])
 		default:
 			out.WriteByte(s)

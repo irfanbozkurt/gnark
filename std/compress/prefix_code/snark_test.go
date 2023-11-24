@@ -2,7 +2,7 @@ package prefix_code
 
 /*
 func TestDecodeOneOne(t *testing.T) {
-	assignment := huffmanTestCircuit{
+	assignment := pfcTestCircuit{
 		Lengths:    []int{1},
 		Bits:       []frontend.Variable{0},
 		Symbols:    []frontend.Variable{0},
@@ -13,7 +13,7 @@ func TestDecodeOneOne(t *testing.T) {
 }
 
 func TestDecodeTwoOnes(t *testing.T) {
-	assignment := huffmanTestCircuit{
+	assignment := pfcTestCircuit{
 		Lengths:    []int{1},
 		Bits:       []frontend.Variable{0, 0},
 		Symbols:    []frontend.Variable{0, 0},
@@ -30,7 +30,7 @@ func BenchmarkDecodeBlob(b *testing.B) {
 	csvRecs, err := csv.NewReader(csvfile).ReadAll()
 	require.NoError(b, err)
 
-	circuit := huffmanTestCircuit{
+	circuit := pfcTestCircuit{
 		Lengths: getIntColumn(csvRecs, 1),
 		Bits:    make([]frontend.Variable, 114*1024*8),
 		Symbols: make([]frontend.Variable, 125*1024),
@@ -44,7 +44,7 @@ func BenchmarkDecodeBlob(b *testing.B) {
 }
 
 func TestDecodeTwoSymbs(t *testing.T) {
-	assignment := huffmanTestCircuit{
+	assignment := pfcTestCircuit{
 		Lengths:    []int{1, 2},
 		Bits:       []frontend.Variable{0, 1, 0},
 		Symbols:    []frontend.Variable{0, 1},
@@ -54,21 +54,21 @@ func TestDecodeTwoSymbs(t *testing.T) {
 	test.NewAssert(t).SolvingSucceeded(assignment.hollow(), &assignment, test.WithBackends(backend.PLONK), test.WithCurves(ecc.BN254))
 }
 
-type huffmanTestCircuit struct {
+type pfcTestCircuit struct {
 	Lengths             []int
 	Bits, Symbols       []frontend.Variable
 	BitsLen, SymbolsLen frontend.Variable
 }
 
-func (c *huffmanTestCircuit) hollow() frontend.Circuit {
-	return &huffmanTestCircuit{
+func (c *pfcTestCircuit) hollow() frontend.Circuit {
+	return &pfcTestCircuit{
 		Lengths: c.Lengths,
 		Bits:    make([]frontend.Variable, len(c.Bits)),
 		Symbols: make([]frontend.Variable, len(c.Symbols)),
 	}
 }
 
-func (c *huffmanTestCircuit) Define(api frontend.API) error {
+func (c *pfcTestCircuit) Define(api frontend.API) error {
 	symbols := make([]frontend.Variable, len(c.Symbols))
 	l, err := Decode(api, c.Bits, c.BitsLen, c.Lengths, symbols)
 	if err != nil {

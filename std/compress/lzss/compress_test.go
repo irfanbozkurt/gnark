@@ -14,15 +14,15 @@ import (
 
 func testCompressionRoundTrip(t *testing.T, d []byte) {
 
-	huffman := getNoHuffman()
+	pfc := getNoPfc()
 
-	compressor, err := NewCompressor(getDictionary(), BestCompression, huffman)
+	compressor, err := NewCompressor(getDictionary(), BestCompression, pfc)
 	require.NoError(t, err)
 
 	c, err := compressor.Compress(d)
 	require.NoError(t, err)
 
-	dBack, err := DecompressGo(c, getDictionary(), huffman)
+	dBack, err := DecompressGo(c, getDictionary(), pfc)
 	require.NoError(t, err)
 
 	if !bytes.Equal(d, dBack) {
@@ -48,17 +48,17 @@ func TestNoCompression(t *testing.T) {
 
 func TestNoCompressionAttempt(t *testing.T) {
 
-	huffman := getNoHuffman()
+	pfc := getNoPfc()
 
 	d := []byte{253, 254, 255}
 
-	compressor, err := NewCompressor(getDictionary(), NoCompression, huffman)
+	compressor, err := NewCompressor(getDictionary(), NoCompression, pfc)
 	require.NoError(t, err)
 
 	c, err := compressor.Compress(d)
 	require.NoError(t, err)
 
-	dBack, err := DecompressGo(c, getDictionary(), huffman)
+	dBack, err := DecompressGo(c, getDictionary(), pfc)
 	require.NoError(t, err)
 
 	if !bytes.Equal(d, dBack) {
@@ -77,7 +77,7 @@ func Test8ZerosAfterNonzero(t *testing.T) { // probably won't happen in our call
 // Fuzz test the compression / decompression
 func FuzzCompress(f *testing.F) {
 
-	huffman := getNoHuffman()
+	pfc := getNoPfc()
 
 	f.Fuzz(func(t *testing.T, input, dict []byte, cMode uint8) {
 		if len(input) > maxInputSize {
@@ -97,7 +97,7 @@ func FuzzCompress(f *testing.F) {
 			level = BestCompression
 		}
 
-		compressor, err := NewCompressor(dict, level, huffman)
+		compressor, err := NewCompressor(dict, level, pfc)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -106,7 +106,7 @@ func FuzzCompress(f *testing.F) {
 			t.Fatal(err)
 		}
 
-		decompressedBytes, err := DecompressGo(compressedBytes, dict, huffman)
+		decompressedBytes, err := DecompressGo(compressedBytes, dict, pfc)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -131,7 +131,7 @@ func TestRepeatedNonzero(t *testing.T) {
 
 func TestAverageBatch(t *testing.T) {
 
-	huffman := getNoHuffman()
+	pfc := getNoPfc()
 
 	assert := require.New(t)
 
@@ -144,7 +144,7 @@ func TestAverageBatch(t *testing.T) {
 	assert.NoError(err)
 
 	dict := getDictionary()
-	compressor, err := NewCompressor(dict, BestCompression, huffman)
+	compressor, err := NewCompressor(dict, BestCompression, pfc)
 	assert.NoError(err)
 
 	lzssRes, err := compresslzss_v1(compressor, data)
@@ -152,7 +152,7 @@ func TestAverageBatch(t *testing.T) {
 
 	fmt.Println("lzss compression ratio:", lzssRes.ratio)
 
-	lzssDecompressed, err := decompresslzss_v1(lzssRes.compressed, dict, huffman)
+	lzssDecompressed, err := decompresslzss_v1(lzssRes.compressed, dict, pfc)
 	assert.NoError(err)
 	assert.True(bytes.Equal(data, lzssDecompressed))
 
@@ -172,9 +172,9 @@ func BenchmarkAverageBatch(b *testing.B) {
 	}
 
 	dict := getDictionary()
-	huffman := getNoHuffman()
+	pfc := getNoPfc()
 
-	compressor, err := NewCompressor(dict, BestCompression, huffman)
+	compressor, err := NewCompressor(dict, BestCompression, pfc)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -197,8 +197,8 @@ type compressResult struct {
 	ratio      float64
 }
 
-func decompresslzss_v1(data, dict []byte, huffman *HuffmanSettings) ([]byte, error) {
-	return DecompressGo(data, dict, huffman)
+func decompresslzss_v1(data, dict []byte, pfc *PrefixCode) ([]byte, error) {
+	return DecompressGo(data, dict, pfc)
 }
 
 func compresslzss_v1(compressor *Compressor, data []byte) (compressResult, error) {
@@ -226,23 +226,23 @@ func TestBackRefRoundTripNoHuffman(t *testing.T) {
 		length:  4,
 	}
 
-	var huffman HuffmanSettings
-	huffman.chars.Lengths = repeat(8, 256)
-	huffman.lens.Lengths = repeat(8, 256)
-	huffman.addrs.Lengths = repeat(8, 256)
-	huffman.ensureCodesNotNil() // for writing
-	huffman.ensureTreesNotNil() // for reading
+	var pfc PrefixCode
+	pfc.chars.Lengths = repeat(8, 256)
+	pfc.lens.Lengths = repeat(8, 256)
+	pfc.addrs.Lengths = repeat(8, 256)
+	pfc.ensureCodesNotNil() // for writing
+	pfc.ensureTreesNotNil() // for reading
 
 	var bb bytes.Buffer
 	w := bitio.NewWriter(&bb)
 
-	br.writeTo(w, &huffman, 0)
+	br.writeTo(w, &pfc, 0)
 
 	assert.NoError(t, w.Close())
 
 	r := bitio.NewReader(bytes.NewReader(bb.Bytes()[1:]))
 	brb := ref{bType: br.bType}
-	brb.readFrom(r, &huffman)
+	brb.readFrom(r, &pfc)
 	assert.Equal(t, br, brb)
 }
 
@@ -254,8 +254,8 @@ func getDictionary() []byte {
 	return d
 }
 
-func getNoHuffman() *HuffmanSettings {
-	var res HuffmanSettings
+func getNoPfc() *PrefixCode {
+	var res PrefixCode
 
 	res.chars.Lengths = repeat(8, 256)
 	res.lens.Lengths = repeat(8, 256)

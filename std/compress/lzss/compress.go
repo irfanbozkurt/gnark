@@ -22,7 +22,7 @@ type Compressor struct {
 
 	level Level
 
-	huffmanSettings *HuffmanSettings
+	pfc *PrefixCode
 }
 
 type Level uint8
@@ -43,7 +43,7 @@ const (
 )
 
 // NewCompressor returns a new compressor with the given dictionary
-func NewCompressor(dict []byte, level Level, huffman *HuffmanSettings) (*Compressor, error) {
+func NewCompressor(dict []byte, level Level, pfc *PrefixCode) (*Compressor, error) {
 	dict = augmentDict(dict)
 	if len(dict) > maxDictSize {
 		return nil, fmt.Errorf("dict size must be <= %d", maxDictSize)
@@ -54,8 +54,8 @@ func NewCompressor(dict []byte, level Level, huffman *HuffmanSettings) (*Compres
 	c.buf.Grow(maxInputSize)
 	c.dictIndex = suffixarray.New(c.dictData, c.dictSa[:len(c.dictData)])
 	c.level = level
-	huffman.ensureCodesNotNil()
-	c.huffmanSettings = huffman
+	pfc.ensureCodesNotNil()
+	c.pfc = pfc
 
 	return c, nil
 }
@@ -138,13 +138,13 @@ func (compressor *Compressor) Compress(d []byte) (c []byte, err error) {
 				return nil, fmt.Errorf("could not find a backref at index %d", i)
 			}
 			best, _ := bestBackref()
-			best.writeTo(compressor.bw, compressor.huffmanSettings, i)
+			best.writeTo(compressor.bw, compressor.pfc, i)
 			i += best.length
 			continue
 		}
 		if !fillBackrefs(i, -1) {
 			// we didn't find a ref, let's write the symbol directly
-			compressor.huffmanSettings.chars.Write(compressor.bw, uint64(d[i]))
+			compressor.pfc.chars.Write(compressor.bw, uint64(d[i]))
 			i++
 			continue
 		}
@@ -154,7 +154,7 @@ func (compressor *Compressor) Compress(d []byte) (c []byte, err error) {
 			if fillBackrefs(i+1, bestAtI.length+1) {
 				if newBest, newSavings := bestBackref(); newSavings > bestSavings {
 					// we found an even better ref
-					compressor.huffmanSettings.chars.Write(compressor.bw, uint64(d[i]))
+					compressor.pfc.chars.Write(compressor.bw, uint64(d[i]))
 					i++
 
 					// then emit the ref at i+1
@@ -166,7 +166,7 @@ func (compressor *Compressor) Compress(d []byte) (c []byte, err error) {
 						if fillBackrefs(i+1, bestAtI.length+1) {
 							// we found an even better ref
 							if newBest, newSavings := bestBackref(); newSavings > bestSavings {
-								compressor.huffmanSettings.chars.Write(compressor.bw, uint64(d[i]))
+								compressor.pfc.chars.Write(compressor.bw, uint64(d[i]))
 								i++
 
 								// bestSavings = newSavings
@@ -194,7 +194,7 @@ func (compressor *Compressor) Compress(d []byte) (c []byte, err error) {
 			}
 		}
 
-		bestAtI.writeTo(compressor.bw, compressor.huffmanSettings, i)
+		bestAtI.writeTo(compressor.bw, compressor.pfc, i)
 		i += bestAtI.length
 	}
 
