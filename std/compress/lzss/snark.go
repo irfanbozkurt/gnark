@@ -5,7 +5,7 @@ import (
 	"github.com/consensys/gnark/std/compress"
 	"github.com/consensys/gnark/std/compress/prefix_code"
 	"github.com/consensys/gnark/std/lookup/logderivlookup"
-	"slices"
+	"golang.org/x/exp/slices"
 )
 
 // bite size of c needs to be the greatest common denominator of all ref types and 8

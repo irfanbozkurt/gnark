@@ -4,7 +4,7 @@ import (
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/std/compress"
 	"github.com/consensys/gnark/std/lookup/logderivlookup"
-	"slices"
+	"golang.org/x/exp/slices"
 )
 
 func Read(api frontend.API, c []frontend.Variable, symbolLengths []int) (valuesTable, lengthTable *logderivlookup.Table) {
