@@ -30,8 +30,8 @@ func testCompressionRoundTrip(t *testing.T, d []byte) {
 	}
 }
 
-func TestFourZeros(t *testing.T) {
-	testCompressionRoundTrip(t, []byte{0, 0, 0, 0})
+func Test5Zeros(t *testing.T) {
+	testCompressionRoundTrip(t, []byte{0, 0, 0, 0, 0})
 }
 
 func Test8Zeros(t *testing.T) {
@@ -259,7 +259,7 @@ func getNoHuffman() *HuffmanSettings {
 
 	res.chars.Lengths = repeat(8, 256)
 	res.lens.Lengths = repeat(8, 256)
-	res.addrs.Lengths = repeat(8, 1<<19)
+	res.addrs.Lengths = repeat(19, 1<<19)
 
 	return &res
 }

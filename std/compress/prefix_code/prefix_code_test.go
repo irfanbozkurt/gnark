@@ -20,3 +20,15 @@ func TestNoCodingLength2(t *testing.T) {
 	r := bitio.NewReader(bytes.NewReader(bb.Bytes()))
 	assert.Equal(t, uint64(3), table.Read(r))
 }
+
+func TestLengthsToTables(t *testing.T) {
+	const bitLen = 16
+	const size = 1 << bitLen
+	lengths := make([]int, size)
+	for i := range lengths {
+		lengths[i] = bitLen
+	}
+
+	symbs, lengthsByCode := LengthsToTables(lengths)
+	_, _ = symbs, lengthsByCode
+}
