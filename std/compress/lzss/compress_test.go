@@ -227,9 +227,9 @@ func TestBackRefRoundTripNoHuffman(t *testing.T) {
 	}
 
 	var pfc PrefixCode
-	pfc.chars.Lengths = repeat(8, 256)
-	pfc.lens.Lengths = repeat(8, 256)
-	pfc.addrs.Lengths = repeat(8, 256)
+	pfc.Chars.Lengths = repeat(8, 256)
+	pfc.Lens.Lengths = repeat(8, 256)
+	pfc.Addrs.Lengths = repeat(8, 256)
 	pfc.ensureCodesNotNil() // for writing
 	pfc.ensureTreesNotNil() // for reading
 
@@ -257,9 +257,9 @@ func getDictionary() []byte {
 func getNoPfc() *PrefixCode {
 	var res PrefixCode
 
-	res.chars.Lengths = repeat(8, 256)
-	res.lens.Lengths = repeat(8, 256)
-	res.addrs.Lengths = repeat(19, 1<<19)
+	res.Chars.Lengths = repeat(8, 256)
+	res.Lens.Lengths = repeat(8, 256)
+	res.Addrs.Lengths = repeat(19, 1<<19)
 
 	return &res
 }

@@ -144,7 +144,7 @@ func (compressor *Compressor) Compress(d []byte) (c []byte, err error) {
 		}
 		if !fillBackrefs(i, -1) {
 			// we didn't find a ref, let's write the symbol directly
-			compressor.pfc.chars.Write(compressor.bw, uint64(d[i]))
+			compressor.pfc.Chars.Write(compressor.bw, uint64(d[i]))
 			i++
 			continue
 		}
@@ -154,7 +154,7 @@ func (compressor *Compressor) Compress(d []byte) (c []byte, err error) {
 			if fillBackrefs(i+1, bestAtI.length+1) {
 				if newBest, newSavings := bestBackref(); newSavings > bestSavings {
 					// we found an even better ref
-					compressor.pfc.chars.Write(compressor.bw, uint64(d[i]))
+					compressor.pfc.Chars.Write(compressor.bw, uint64(d[i]))
 					i++
 
 					// then emit the ref at i+1
@@ -166,7 +166,7 @@ func (compressor *Compressor) Compress(d []byte) (c []byte, err error) {
 						if fillBackrefs(i+1, bestAtI.length+1) {
 							// we found an even better ref
 							if newBest, newSavings := bestBackref(); newSavings > bestSavings {
-								compressor.pfc.chars.Write(compressor.bw, uint64(d[i]))
+								compressor.pfc.Chars.Write(compressor.bw, uint64(d[i]))
 								i++
 
 								// bestSavings = newSavings

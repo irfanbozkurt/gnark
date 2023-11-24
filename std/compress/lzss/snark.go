@@ -31,13 +31,13 @@ func Decompress(api frontend.API, c []frontend.Variable, cLength frontend.Variab
 	}
 
 	// formatted input
-	chars, charsLen := prefix_code.Read(api, c, pfc.chars.Lengths)
-	lens, lensLen := prefix_code.Read(api, c, pfc.lens.Lengths)
-	addrs, addrsLen := prefix_code.Read(api, c, pfc.addrs.Lengths)
+	chars, charsLen := prefix_code.Read(api, c, pfc.Chars.Lengths)
+	lens, lensLen := prefix_code.Read(api, c, pfc.Lens.Lengths)
+	addrs, addrsLen := prefix_code.Read(api, c, pfc.Addrs.Lengths)
 	{ // pad
-		width := slices.Max(pfc.chars.Lengths)
+		width := slices.Max(pfc.Chars.Lengths)
 		compress.PadTables(api, width, lens, lensLen)
-		width += slices.Max(pfc.lens.Lengths)
+		width += slices.Max(pfc.Lens.Lengths)
 		compress.PadTables(api, width, addrs, addrsLen)
 	}
 

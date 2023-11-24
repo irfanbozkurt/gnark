@@ -11,7 +11,7 @@ import (
 )
 
 type PrefixCode struct {
-	chars, lens, addrs prefix_code.Table
+	Chars, Lens, Addrs prefix_code.Table
 }
 
 func (h *PrefixCode) TrainHuffman(c [][]byte, dictLen int, level Level) {
@@ -60,9 +60,9 @@ func (h *PrefixCode) TrainHuffman(c [][]byte, dictLen int, level Level) {
 
 	}
 
-	h.chars.Lengths = huffman.CreateTree(charFreq).GetCodeSizes(256)
-	h.lens.Lengths = huffman.CreateTree(lenFreq).GetCodeSizes(256)
-	h.addrs.Lengths = huffman.CreateTree(addrFreq).GetCodeSizes(len(addrFreq))
+	h.Chars.Lengths = huffman.CreateTree(charFreq).GetCodeSizes(256)
+	h.Lens.Lengths = huffman.CreateTree(lenFreq).GetCodeSizes(256)
+	h.Addrs.Lengths = huffman.CreateTree(addrFreq).GetCodeSizes(len(addrFreq))
 }
 
 func intSliceToUint8Slice(in []int) []byte {
@@ -79,13 +79,13 @@ func intSliceToUint8Slice(in []int) []byte {
 func (h *PrefixCode) Marshal() []byte {
 	var bb bytes.Buffer
 	gz := gzip.NewWriter(&bb)
-	if logAddrLen := bits.TrailingZeros(uint(len(h.addrs.Lengths))); 1<<logAddrLen != len(h.addrs.Lengths) {
+	if logAddrLen := bits.TrailingZeros(uint(len(h.Addrs.Lengths))); 1<<logAddrLen != len(h.Addrs.Lengths) {
 		panic("addr length not power of 2")
 	} else if _, err := gz.Write([]byte{byte(logAddrLen)}); err != nil {
 		panic(err)
 	}
 
-	for _, s := range [][]int{h.chars.Lengths, h.lens.Lengths, h.addrs.Lengths} {
+	for _, s := range [][]int{h.Chars.Lengths, h.Lens.Lengths, h.Addrs.Lengths} {
 		for _, i := range s {
 			if i > 255 || i < 0 {
 				panic("invalid value")
@@ -118,12 +118,12 @@ func (h *PrefixCode) Unmarshal(d []byte) {
 	if _, err = gz.Read(buf[:]); err != nil {
 		panic(err)
 	} else {
-		h.addrs.Lengths = make([]int, 1<<buf[0])
+		h.Addrs.Lengths = make([]int, 1<<buf[0])
 	}
-	h.chars.Lengths = make([]int, 256)
-	h.lens.Lengths = make([]int, 256)
+	h.Chars.Lengths = make([]int, 256)
+	h.Lens.Lengths = make([]int, 256)
 
-	for _, s := range [][]int{h.chars.Lengths, h.lens.Lengths, h.addrs.Lengths} {
+	for _, s := range [][]int{h.Chars.Lengths, h.Lens.Lengths, h.Addrs.Lengths} {
 		for i := range s {
 			if _, err = gz.Read(buf[:]); err != nil {
 				panic(err)
@@ -134,13 +134,13 @@ func (h *PrefixCode) Unmarshal(d []byte) {
 }
 
 func (h *PrefixCode) ensureCodesNotNil() {
-	h.chars.EnsureCodesNotNil()
-	h.lens.EnsureCodesNotNil()
-	h.addrs.EnsureCodesNotNil()
+	h.Chars.EnsureCodesNotNil()
+	h.Lens.EnsureCodesNotNil()
+	h.Addrs.EnsureCodesNotNil()
 }
 
 func (h *PrefixCode) ensureTreesNotNil() {
-	h.chars.EnsureTreeNotNil()
-	h.lens.EnsureTreeNotNil()
-	h.addrs.EnsureTreeNotNil()
+	h.Chars.EnsureTreeNotNil()
+	h.Lens.EnsureTreeNotNil()
+	h.Addrs.EnsureTreeNotNil()
 }

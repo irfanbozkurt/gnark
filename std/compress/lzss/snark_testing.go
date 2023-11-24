@@ -58,10 +58,10 @@ func BenchCompressionE2ECompilation(dict []byte, name string, huffman *PrefixCod
 		return nil, err
 	}
 
-	cStream := ReadIntoStream(c, dict, BestCompression)
+	//cStream := ReadIntoStream(c, dict, BestCompression)
 
 	circuit := compressionCircuit{
-		C:     make([]frontend.Variable, cStream.Len()),
+		C:     make([]frontend.Variable /*cStream.Len()*/, len(c)),
 		D:     make([]frontend.Variable, len(d)),
 		Dict:  make([]byte, len(dict)),
 		Level: GoodCompression,
