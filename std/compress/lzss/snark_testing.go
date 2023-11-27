@@ -59,10 +59,8 @@ func BenchCompressionE2ECompilation(dict []byte, name string, pfc *PrefixCode) (
 		return nil, err
 	}
 
-	//cStream := ReadIntoStream(c, dict, BestCompression)
-
 	circuit := compressionCircuit{
-		C:    make([]frontend.Variable /*cStream.Len()*/, len(c)),
+		C:    make([]frontend.Variable, len(c)*8),
 		D:    make([]frontend.Variable, len(d)),
 		Dict: make([]byte, len(dict)),
 		Pfc:  pfc,
