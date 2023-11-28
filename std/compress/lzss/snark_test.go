@@ -1,10 +1,20 @@
 package lzss
 
-/*
+import (
+	"github.com/consensys/gnark-crypto/ecc"
+	"github.com/consensys/gnark/backend"
+	"github.com/consensys/gnark/frontend"
+	test_vector_utils "github.com/consensys/gnark/std/utils/test_vectors_utils"
+	"github.com/consensys/gnark/test"
+	"github.com/stretchr/testify/require"
+	"testing"
+)
+
 func Test1ZeroSnark(t *testing.T) {
 	testCompressionRoundTripSnark(t, []byte{0}, nil)
 }
 
+/*
 func Test0To10Explicit(t *testing.T) {
 	testCompressionRoundTripSnark(t, []byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10}, nil)
 }
@@ -83,34 +93,6 @@ func FuzzSnark(f *testing.F) {
 	})
 }
 
-func testCompressionRoundTripSnark(t *testing.T, d, dict []byte) {
-
-	level := BestCompression
-	if len(d) > 1000 {
-		level = GoodCompression
-	}
-
-	compressor, err := NewCompressor(dict, level)
-	require.NoError(t, err)
-	c, err := compressor.Compress(d)
-	require.NoError(t, err)
-
-	cStream := ReadIntoStream(c, dict, level)
-
-	circuit := &DecompressionTestCircuit{
-		C:                make([]frontend.Variable, cStream.Len()),
-		D:                d,
-		Dict:             dict,
-		CheckCorrectness: true,
-		Level:            level,
-	}
-	assignment := &DecompressionTestCircuit{
-		C:       test_vector_utils.ToVariableSlice(cStream.D),
-		CLength: cStream.Len(),
-	}
-
-	test.NewAssert(t).CheckCircuit(circuit, test.WithValidAssignment(assignment), test.WithBackends(backend.PLONK), test.WithCurves(ecc.BN254))
-}
 
 func testDecompressionSnark(t *testing.T, dict []byte, level Level, compressedStream ...interface{}) {
 	var bb bytes.Buffer
@@ -188,3 +170,34 @@ func (c *readBytesCircuit) Define(api frontend.API) error {
 	return nil
 }
 */
+
+func testCompressionRoundTripSnark(t *testing.T, d, dict []byte) {
+
+	level := BestCompression
+	if len(d) > 1000 {
+		level = GoodCompression
+	}
+
+	pfx := getNoPfc()
+
+	compressor, err := NewCompressor(dict, level, pfx)
+	require.NoError(t, err)
+	c, err := compressor.Compress(d)
+	require.NoError(t, err)
+
+	cStream := ReadIntoStream(c, dict, BestCompression)
+
+	circuit := &DecompressionTestCircuit{
+		C:                make([]frontend.Variable, cStream.Len()),
+		D:                d,
+		Dict:             dict,
+		CheckCorrectness: true,
+	}
+
+	assignment := &DecompressionTestCircuit{
+		C:       test_vector_utils.ToVariableSlice(cStream.D),
+		CLength: cStream.Len(),
+	}
+
+	test.NewAssert(t).CheckCircuit(circuit, test.WithValidAssignment(assignment), test.WithBackends(backend.PLONK), test.WithCurves(ecc.BN254))
+}

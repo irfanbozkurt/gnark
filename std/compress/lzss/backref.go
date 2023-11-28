@@ -58,10 +58,19 @@ func (b *ref) writeTo(w *bitio.Writer, huffman *PrefixCode, i int) {
 
 func (b *ref) readFrom(r *bitio.Reader, huffman *PrefixCode) {
 
-	b.length = int(huffman.Lens.Read(r)) + 1
-	b.address = int(huffman.Addrs.Read(r))
-	if !b.bType.dictOnly {
-		b.address++
+	if x, err := huffman.Lens.Read(r); err != nil {
+		panic(err)
+	} else {
+		b.length = int(x) + 1
+	}
+
+	if x, err := huffman.Addrs.Read(r); err != nil {
+		panic(err)
+	} else {
+		b.address = int(x)
+		if !b.bType.dictOnly {
+			b.address++
+		}
 	}
 }
 

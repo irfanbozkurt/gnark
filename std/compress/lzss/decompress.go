@@ -2,7 +2,9 @@ package lzss
 
 import (
 	"bytes"
+	"github.com/consensys/gnark/std/compress"
 	"github.com/icza/bitio"
+	"io"
 )
 
 func DecompressGo(data, dict []byte, pfc *PrefixCode) (d []byte, err error) {
@@ -26,8 +28,8 @@ func DecompressGo(data, dict []byte, pfc *PrefixCode) (d []byte, err error) {
 
 	// read until startAt and write bytes as is
 
-	s := in.TryReadByte()
-	for in.TryError == nil {
+	s, err := pfc.Chars.Read(in)
+	for err == nil {
 		switch s {
 		case symbolBackref:
 			// short back ref
@@ -42,24 +44,27 @@ func DecompressGo(data, dict []byte, pfc *PrefixCode) (d []byte, err error) {
 		default:
 			out.WriteByte(s)
 		}
-		s = in.TryReadByte()
+		s, err = pfc.Chars.Read(in)
 	}
 
-	return out.Bytes(), nil
+	if err == io.EOF {
+		err = nil
+	}
+
+	return out.Bytes(), err
 }
 
-/*
-func ReadIntoStream(data, dict []byte, level Level) compress.Stream {
+func ReadIntoStream(data, dict []byte, pfc *PrefixCode) compress.Stream {
 	in := bitio.NewReader(bytes.NewReader(data))
 
-	wordLen := int(level)
+	level := BestCompression
+	wordLen := int(BestCompression)
 
 	dict = augmentDict(dict)
-	shortBackRefType,  dictBackRefType := initRefTypes(len(dict), level)
+	backRefType, dictRefType := initRefTypes(len(dict), level)
 
-	bDict := ref{bType: dictBackRefType}
-	bShort := ref{bType: shortBackRefType}
-	bLong := ref{bType: longBackRefType}
+	dr := ref{bType: dictRefType}
+	br := ref{bType: backRefType}
 
 	levelFromData := Level(in.TryReadByte())
 	if levelFromData != NoCompression && levelFromData != level {
@@ -72,37 +77,34 @@ func ReadIntoStream(data, dict []byte, level Level) compress.Stream {
 
 	out.WriteNum(int(levelFromData), 8/wordLen)
 
-	s := in.TryReadByte()
+	s, err := pfc.Chars.Read(in)
 
-	for in.TryError == nil {
+	for err == nil {
 		out.WriteNum(int(s), 8/wordLen)
 
-		var b *ref
+		var r *ref
 		switch s {
 		case symbolBackref:
 			// short back ref
-			b = &bShort
-		case symbolLong:
-			// long back ref
-			b = &bLong
+			r = &br
 		case symbolDict:
 			// dict back ref
-			b = &bDict
+			r = &dr
 		}
-		if b != nil && levelFromData != NoCompression {
-			b.readFrom(in)
-			address := b.address
-			if b != &bDict {
+		if r != nil && levelFromData != NoCompression {
+			r.readFrom(in, pfc)
+			address := r.address
+			if r != &dr {
 				address--
 			}
-			out.WriteNum(b.length-1, int(b.bType.nbBitsLength)/wordLen)
-			out.WriteNum(address, int(b.bType.nbBitsAddress)/wordLen)
+			out.WriteNum(r.length-1, int(r.bType.nbBitsLength)/wordLen)
+			out.WriteNum(address, int(r.bType.nbBitsAddress)/wordLen)
 		}
 
-		s = in.TryReadByte()
+		s, err = pfc.Chars.Read(in)
 	}
 	if in.TryError != io.EOF {
 		panic(in.TryError)
 	}
 	return out
-}*/
+}

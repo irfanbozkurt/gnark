@@ -107,16 +107,21 @@ func (h *Table) Write(w *bitio.Writer, s uint64) {
 	w.TryWriteBits(h.codes[s], uint8(h.Lengths[s]))
 }
 
-func (h *Table) Read(r *bitio.Reader) uint64 {
+func (h *Table) Read(r *bitio.Reader) (uint64, error) {
 	curr := h.tree
 	for curr.Left != nil {
-		if r.TryReadBool() {
-			curr = curr.Right
+		if b, err := r.ReadBool(); err != nil {
+			return 0, err
 		} else {
-			curr = curr.Left
+			if b {
+				curr = curr.Right
+			} else {
+				curr = curr.Left
+			}
 		}
+
 	}
-	return curr.Val
+	return curr.Val, nil
 }
 
 func (h *Table) EnsureCodesNotNil() {
