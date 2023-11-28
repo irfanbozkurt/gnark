@@ -42,7 +42,7 @@ func DecompressGo(data, dict []byte, pfc *PrefixCode) (d []byte, err error) {
 			dRef.readFrom(in, pfc)
 			out.Write(dict[dRef.address : dRef.address+dRef.length])
 		default:
-			out.WriteByte(s)
+			out.WriteByte(byte(s))
 		}
 		s, err = pfc.Chars.Read(in)
 	}
@@ -55,6 +55,7 @@ func DecompressGo(data, dict []byte, pfc *PrefixCode) (d []byte, err error) {
 }
 
 func ReadIntoStream(data, dict []byte, pfc *PrefixCode) compress.Stream {
+
 	in := bitio.NewReader(bytes.NewReader(data))
 
 	level := BestCompression
@@ -77,6 +78,7 @@ func ReadIntoStream(data, dict []byte, pfc *PrefixCode) compress.Stream {
 
 	out.WriteNum(int(levelFromData), 8/wordLen)
 
+	pfc.ensureTreesNotNil()
 	s, err := pfc.Chars.Read(in)
 
 	for err == nil {
@@ -103,7 +105,7 @@ func ReadIntoStream(data, dict []byte, pfc *PrefixCode) compress.Stream {
 
 		s, err = pfc.Chars.Read(in)
 	}
-	if in.TryError != io.EOF {
+	if err != nil && err != io.EOF {
 		panic(in.TryError)
 	}
 	return out

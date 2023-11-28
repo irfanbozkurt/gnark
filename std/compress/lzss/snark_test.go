@@ -178,20 +178,21 @@ func testCompressionRoundTripSnark(t *testing.T, d, dict []byte) {
 		level = GoodCompression
 	}
 
-	pfx := getNoPfc()
+	pfc := getNoPfc()
 
-	compressor, err := NewCompressor(dict, level, pfx)
+	compressor, err := NewCompressor(dict, level, pfc)
 	require.NoError(t, err)
 	c, err := compressor.Compress(d)
 	require.NoError(t, err)
 
-	cStream := ReadIntoStream(c, dict, BestCompression)
+	cStream := ReadIntoStream(c, dict, pfc)
 
 	circuit := &DecompressionTestCircuit{
 		C:                make([]frontend.Variable, cStream.Len()),
 		D:                d,
 		Dict:             dict,
 		CheckCorrectness: true,
+		Pfc:              pfc,
 	}
 
 	assignment := &DecompressionTestCircuit{
