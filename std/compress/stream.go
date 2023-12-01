@@ -99,13 +99,22 @@ func (s *Stream) Checksum(hsh hash.Hash, fieldBits int) []byte {
 	return hsh.Sum(nil)
 }
 
+// WriteNum is big endian TODO @Tabaie and a tad inefficient
 func (s *Stream) WriteNum(r int, nbWords int) *Stream {
+	mod := 1
 	for i := 0; i < nbWords; i++ {
-		s.D = append(s.D, r%s.NbSymbs)
-		r /= s.NbSymbs
+		mod *= s.NbSymbs
 	}
-	if r != 0 {
+
+	if r >= mod {
 		panic("overflow")
+	}
+
+	for i := 0; i < nbWords; i++ {
+		mod /= s.NbSymbs
+		b := r / mod
+		r -= b * mod
+		s.D = append(s.D, b)
 	}
 	return s
 }

@@ -14,11 +14,11 @@ func Test1ZeroSnark(t *testing.T) {
 	testCompressionRoundTripSnark(t, []byte{0}, nil)
 }
 
-/*
 func Test0To10Explicit(t *testing.T) {
 	testCompressionRoundTripSnark(t, []byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10}, nil)
 }
 
+/*
 func TestNoCompressionSnark(t *testing.T) {
 
 	d, err := os.ReadFile("./testdata/test_cases/3c2943/data.bin")
