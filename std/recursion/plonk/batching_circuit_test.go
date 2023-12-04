@@ -113,7 +113,7 @@ func getProofs(ccs constraint.ConstraintSystem, nbInstances int, pk native_plonk
 // outer circuit
 
 // type BatchVerifyCircuit[FR emulated.FieldParams, G1El algebra.G1ElementT, G2El algebra.G2ElementT, GtEl algebra.GtElementT] struct {
-type BatchVerifyCircuit[FR emulated.FieldParams, G1El algebra.G1ElementT] struct {
+type BatchVerifyCircuit[FR emulated.FieldParams, G1El algebra.G1ElementT, G2El algebra.G2ElementT] struct {
 
 	// dummy proofs, which are selected instead of the real proof, if the
 	// corresponding selector is 0. The dummy proofs always pass.
@@ -121,8 +121,8 @@ type BatchVerifyCircuit[FR emulated.FieldParams, G1El algebra.G1ElementT] struct
 	// DummyProofs []Proof[FR, G1El, G2El]
 
 	// proofs, verifying keys of the inner circuit
-	// Proofs        []Proof[FR, G1El, G2El]
-	// VerifyingKeys VerifyingKey[FR, G1El, G2El]
+	Proofs        []Proof[FR, G1El, G2El]
+	VerifyingKeys VerifyingKey[FR, G1El, G2El]
 
 	// selectors[i]==0/1 means that the i-th circuit is un/instantiated
 	// Selectors []frontend.Variable
@@ -135,7 +135,7 @@ type BatchVerifyCircuit[FR emulated.FieldParams, G1El algebra.G1ElementT] struct
 }
 
 // func (circuit *BatchVerifyCircuit[FR, G1El, G2El, GtEl]) Define(api frontend.API) error {
-func (circuit *BatchVerifyCircuit[FR, G1El]) Define(api frontend.API) error {
+func (circuit *BatchVerifyCircuit[FR, G1El, G2El]) Define(api frontend.API) error {
 
 	// get Plonk verifier
 	curve, err := algebra.GetCurve[FR, G1El](api)
@@ -164,14 +164,17 @@ func TestBatchVerify(t *testing.T) {
 
 	assert := test.NewAssert(t)
 
-	// get data
-	batchSize := 10
+	// get ccs, vk, pk, srs
+	batchSizeProofs := 1
 	ccs, vk, pk, _ := GetInnerCircuitData()
-	_, witnesses := getProofs(ccs, batchSize, pk, vk)
 
+	// get tuples (proof, public_witness)
+	proofs, witnesses := getProofs(ccs, batchSizeProofs, pk, vk)
+
+	// hash public inputs of the inner proofs
 	h, err := recursion.NewShort(ecc.BW6_761.ScalarField(), ecc.BLS12_377.ScalarField())
 	assert.NoError(err)
-	for i := 0; i < batchSize; i++ {
+	for i := 0; i < batchSizeProofs; i++ {
 		vec := witnesses[i].Vector()
 		tvec := vec.(fr_bls12377.Vector)
 		for j := 0; j < len(tvec); j++ {
@@ -182,19 +185,35 @@ func TestBatchVerify(t *testing.T) {
 	var frHashPub fr_bw6761.Element
 	frHashPub.SetBytes(hashPub)
 
-	var totalWitnessInner Witness[sw_bls12377.ScalarField]
-	for i := 0; i < batchSize; i++ {
+	// outer ciruit instantation
+	outerCircuit := &BatchVerifyCircuit[sw_bls12377.ScalarField, sw_bls12377.G1Affine, sw_bls12377.G2Affine]{
+		PublicInners: make([]emulated.Element[sw_bls12377.ScalarField], batchSizeProofs),
+	}
+	outerCircuit.Proofs = make([]Proof[sw_bls12377.ScalarField, sw_bls12377.G1Affine, sw_bls12377.G2Affine], batchSizeProofs)
+	for i := 0; i < batchSizeProofs; i++ {
+		outerCircuit.Proofs[i] = PlaceholderProof[sw_bls12377.ScalarField, sw_bls12377.G1Affine, sw_bls12377.G2Affine](ccs)
+	}
+	outerCircuit.VerifyingKeys = PlaceholderVerifyingKey[sw_bls12377.ScalarField, sw_bls12377.G1Affine, sw_bls12377.G2Affine](ccs)
+
+	// witness assignment
+	var assignmentPubToPrivWitnesses Witness[sw_bls12377.ScalarField]
+	for i := 0; i < batchSizeProofs; i++ {
 		curWitness, err := ValueOfWitness[sw_bls12377.ScalarField](witnesses[i])
 		assert.NoError(err)
-		totalWitnessInner.Public = append(totalWitnessInner.Public, curWitness.Public...)
+		assignmentPubToPrivWitnesses.Public = append(assignmentPubToPrivWitnesses.Public, curWitness.Public...)
 	}
-
-	outerCircuit := &BatchVerifyCircuit[sw_bls12377.ScalarField, sw_bls12377.G1Affine]{
-		PublicInners: make([]emulated.Element[sw_bls12377.ScalarField], batchSize),
+	assignmentVerifyingKeys, err := ValueOfVerifyingKey[sw_bls12377.ScalarField, sw_bls12377.G1Affine, sw_bls12377.G2Affine](vk)
+	assert.NoError(err)
+	assignmentProofs := make([]Proof[sw_bls12377.ScalarField, sw_bls12377.G1Affine, sw_bls12377.G2Affine], batchSizeProofs)
+	for i := 0; i < batchSizeProofs; i++ {
+		assignmentProofs[i], err = ValueOfProof[sw_bls12377.ScalarField, sw_bls12377.G1Affine, sw_bls12377.G2Affine](proofs[i])
+		assert.NoError(err)
 	}
-	outerAssignment := &BatchVerifyCircuit[sw_bls12377.ScalarField, sw_bls12377.G1Affine]{
-		PublicInners: totalWitnessInner.Public,
-		HashPub:      frHashPub.String(),
+	outerAssignment := &BatchVerifyCircuit[sw_bls12377.ScalarField, sw_bls12377.G1Affine, sw_bls12377.G2Affine]{
+		Proofs:        assignmentProofs,
+		VerifyingKeys: assignmentVerifyingKeys,
+		PublicInners:  assignmentPubToPrivWitnesses.Public,
+		HashPub:       frHashPub.String(),
 	}
 	err = test.IsSolved(outerCircuit, outerAssignment, ecc.BW6_761.ScalarField())
 	assert.NoError(err)
