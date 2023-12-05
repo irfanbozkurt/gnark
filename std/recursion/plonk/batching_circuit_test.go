@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math/big"
 	"testing"
+	"time"
 
 	"github.com/consensys/gnark-crypto/ecc"
 	fr_bls12377 "github.com/consensys/gnark-crypto/ecc/bls12-377/fr"
@@ -20,6 +21,7 @@ import (
 	"github.com/consensys/gnark/std/math/emulated"
 	"github.com/consensys/gnark/std/recursion"
 	"github.com/consensys/gnark/test"
+	"github.com/pkg/profile"
 )
 
 //------------------------------------------------------
@@ -267,7 +269,7 @@ func TestBatchVerify(t *testing.T) {
 	assert := test.NewAssert(t)
 
 	// get ccs, vk, pk, srs
-	batchSizeProofs := 10
+	const batchSizeProofs = 10
 	innerCcs, vk, pk, _ := GetInnerCircuitData()
 
 	// get tuples (proof, public_witness)
@@ -318,13 +320,45 @@ func TestBatchVerify(t *testing.T) {
 		// selectors,
 	)
 
-	// ccs, err := frontend.Compile(
-	// 	ecc.BW6_761.ScalarField(),
-	// 	scs.NewBuilder,
-	// 	outerCircuit)
-	// assert.NoError(err)
-	// fmt.Printf("nb constraints: %d\n", ccs.GetNbConstraints())
-
-	err = test.IsSolved(&outerCircuit, &outerAssignment, ecc.BW6_761.ScalarField())
+	ccs, err := frontend.Compile(
+		ecc.BW6_761.ScalarField(),
+		scs.NewBuilder,
+		&outerCircuit)
 	assert.NoError(err)
+	nbConstraintsPerProof := ccs.GetNbConstraints() / batchSizeProofs
+	fmt.Printf("nb constraints total: %d\n", ccs.GetNbConstraints())
+	fmt.Printf("nb constraints per proof: %d\n", nbConstraintsPerProof)
+	fmt.Printf("max batch: %d\n", (1<<27)/nbConstraintsPerProof)
+
+	// witness
+	fullWitness, err := frontend.NewWitness(&outerAssignment, ecc.BW6_761.ScalarField())
+	assert.NoError(err)
+	// setup
+	srs, err := test.NewKZGSRS(ccs)
+	assert.NoError(err)
+
+	// plonk setup
+	start := time.Now()
+	p := profile.Start(profile.CPUProfile, profile.ProfilePath("."))
+	pk, vk, err = native_plonk.Setup(ccs, srs)
+	p.Stop()
+	assert.NoError(err)
+	fmt.Printf("setup time: %s\n", time.Since(start).String())
+
+	// prove
+	start = time.Now()
+	proof, err := native_plonk.Prove(ccs, pk, fullWitness)
+	assert.NoError(err)
+	fmt.Printf("prove time: %s (per unit: %s)\n", time.Since(start).String(), (time.Since(start) / batchSizeProofs).String())
+
+	// verify
+	err = native_plonk.Verify(
+		proof,
+		vk,
+		fullWitness,
+	)
+	assert.NoError(err)
+
+	// err = test.IsSolved(&outerCircuit, &outerAssignment, ecc.BW6_761.ScalarField())
+	// assert.NoError(err)
 }
