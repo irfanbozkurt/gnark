@@ -1,0 +1,7 @@
+goos: linux
+goarch: amd64
+pkg: github.com/consensys/gnark/backend/plonk
+cpu: AMD EPYC 7R13 Processor
+BenchmarkProver/bn254-96         	       1	5232334900 ns/op	6348612832 B/op	   20763 allocs/op
+PASS
+ok  	github.com/consensys/gnark/backend/plonk	18.586s
