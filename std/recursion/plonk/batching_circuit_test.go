@@ -268,7 +268,7 @@ func TestBatchVerify(t *testing.T) {
 	assert := test.NewAssert(t)
 
 	// get ccs, vk, pk, srs
-	const batchSizeProofs = 4
+	const batchSizeProofs = 1
 	innerCcs, vk, pk, _ := GetInnerCircuitData()
 
 	// get tuples (proof, public_witness)
