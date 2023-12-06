@@ -21,7 +21,6 @@ import (
 	"github.com/consensys/gnark/std/math/emulated"
 	"github.com/consensys/gnark/std/recursion"
 	"github.com/consensys/gnark/test"
-	"github.com/pkg/profile"
 )
 
 //------------------------------------------------------
@@ -269,7 +268,7 @@ func TestBatchVerify(t *testing.T) {
 	assert := test.NewAssert(t)
 
 	// get ccs, vk, pk, srs
-	const batchSizeProofs = 10
+	const batchSizeProofs = 4
 	innerCcs, vk, pk, _ := GetInnerCircuitData()
 
 	// get tuples (proof, public_witness)
@@ -320,11 +319,13 @@ func TestBatchVerify(t *testing.T) {
 		// selectors,
 	)
 
+	ss := time.Now()
 	ccs, err := frontend.Compile(
 		ecc.BW6_761.ScalarField(),
 		scs.NewBuilder,
 		&outerCircuit)
 	assert.NoError(err)
+	fmt.Printf("compile time: %s\n", time.Since(ss).String())
 	nbConstraintsPerProof := ccs.GetNbConstraints() / batchSizeProofs
 	fmt.Printf("nb constraints total: %d\n", ccs.GetNbConstraints())
 	fmt.Printf("nb constraints per proof: %d\n", nbConstraintsPerProof)
@@ -339,9 +340,7 @@ func TestBatchVerify(t *testing.T) {
 
 	// plonk setup
 	start := time.Now()
-	p := profile.Start(profile.CPUProfile, profile.ProfilePath("."))
 	pk, vk, err = native_plonk.Setup(ccs, srs)
-	p.Stop()
 	assert.NoError(err)
 	fmt.Printf("setup time: %s\n", time.Since(start).String())
 
