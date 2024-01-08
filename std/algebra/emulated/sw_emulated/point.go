@@ -788,46 +788,77 @@ func (c *Curve[B, S]) scalarBitsMul(p *AffinePoint[B], sBits []frontend.Variable
 // ScalarMulBase computes s * g and returns it, where g is the fixed generator.
 // It doesn't modify s.
 //
-// ✅ When s=0, it returns (0,0).
-// (0,0) is not on the curve but we conventionally take it as the
-// neutral/infinity point as per the [EVM].
-//
 // It computes the standard little-endian fixed-base double-and-add algorithm
 // [HMV04] (Algorithm 3.26), with the points [2^i]g precomputed.  The bits at
 // positions 1 and 2 are handled outside of the loop to optimize the number of
 // constraints using a Lookup2 with pre-computed [3]g, [5]g and [7]g points.
 //
 // [HMV04]: https://link.springer.com/book/10.1007/b97644
-// [EVM]: https://ethereum.github.io/yellowpaper/paper.pdf
-func (c *Curve[B, S]) ScalarMulBase(s *emulated.Element[S], opts ...algopts.AlgebraOption) *AffinePoint[B] {
-	cfg, err := algopts.NewConfig(opts...)
-	if err != nil {
-		panic(fmt.Sprintf("parse opts: %v", err))
-	}
-
+func (c *Curve[B, S]) ScalarMulBase(s *emulated.Element[S]) *AffinePoint[B] {
 	var st S
-	sr := c.scalarApi.Reduce(s)
-	sBits := c.scalarApi.ToBits(sr)
-	n := st.Modulus().BitLen()
-	if cfg.NbScalarBits > 2 && cfg.NbScalarBits < n {
-		n = cfg.NbScalarBits
+	frModulus := c.scalarApi.Modulus()
+	sd, err := c.scalarApi.NewHint(decomposeScalarG1, 5, s, c.eigenvalue, frModulus)
+	if err != nil {
+		panic(fmt.Sprintf("compute GLV decomposition: %v", err))
 	}
-	g := c.Generator()
-	gm := c.GeneratorMultiples()
+	s1, s2 := sd[0], sd[1]
+	c.scalarApi.AssertIsEqual(
+		c.scalarApi.Add(s1, c.scalarApi.Mul(s2, c.eigenvalue)),
+		c.scalarApi.Add(s, c.scalarApi.Mul(frModulus, sd[2])),
+	)
+	selector1 := c.scalarApi.IsZero(c.scalarApi.Sub(sd[3], s1))
+	selector2 := c.scalarApi.IsZero(c.scalarApi.Sub(sd[4], s2))
 
+	// [s1]g
+	s1Bits := c.scalarApi.ToBits(c.scalarApi.Reduce(s1))
+	g1 := c.Generator()
+	c.Print(*g1)
+	g1.Y = *c.baseApi.Select(selector1, &g1.Y, c.baseApi.Neg(&g1.Y))
+	gm1 := c.GeneratorMultiples()
+	for i := range gm1 {
+		gm1[i].Y = *c.baseApi.Select(selector2, &gm1[i].Y, c.baseApi.Neg(&gm1[i].Y))
+	}
 	// i = 1, 2
 	// gm[0] = 3g, gm[1] = 5g, gm[2] = 7g
-	res := c.Lookup2(sBits[1], sBits[2], g, &gm[0], &gm[1], &gm[2])
+	res1 := c.Lookup2(s1Bits[1], s1Bits[2], g1, &gm1[0], &gm1[1], &gm1[2])
+	n := st.Modulus().BitLen()>>1 + 2
+	for i := 3; i < n; i++ {
+		// gm[i] = [2^i]g
+		tmp := c.add(res1, &gm1[i])
+		res1 = c.Select(s1Bits[i], tmp, res1)
+	}
+	// i = 0
+	tmp := c.Add(res1, c.Neg(g1))
+	res1 = c.Select(s1Bits[0], res1, tmp)
+
+	// [s2]Φ(g)
+	s2Bits := c.scalarApi.ToBits(c.scalarApi.Reduce(s2))
+	g2 := c.Generator()
+	g2.X = *c.baseApi.Mul(&g2.X, c.thirdRootOne)
+	g2.Y = *c.baseApi.Select(selector1, &g2.Y, c.baseApi.Neg(&g2.Y))
+	gm2 := c.GeneratorMultiples()
+	for i := range gm2 {
+		gm2[i].X = *c.baseApi.Mul(&gm2[i].X, c.thirdRootOne)
+		gm2[i].Y = *c.baseApi.Select(selector2, &gm2[i].Y, c.baseApi.Neg(&gm2[i].Y))
+	}
+	// i = 1, 2
+	// gm[0] = 3g, gm[1] = 5g, gm[2] = 7g
+	res2 := c.Lookup2(s2Bits[1], s2Bits[2], g2, &gm2[0], &gm2[1], &gm2[2])
 
 	for i := 3; i < n; i++ {
 		// gm[i] = [2^i]g
-		tmp := c.add(res, &gm[i])
-		res = c.Select(sBits[i], tmp, res)
+		tmp := c.add(res2, &gm2[i])
+		res2 = c.Select(s2Bits[i], tmp, res2)
 	}
 
 	// i = 0
-	tmp := c.AddUnified(res, c.Neg(g))
-	res = c.Select(sBits[0], res, tmp)
+	tmp = c.Add(res2, c.Neg(g2))
+	res2 = c.Select(s2Bits[0], res2, tmp)
+
+	// [s1]g + [s2]Φ(g)
+	res := c.Add(res1, res2)
+	c.scalarApi.Println(s)
+	c.Print(*res)
 
 	return res
 }
@@ -837,8 +868,6 @@ func (c *Curve[B, S]) ScalarMulBase(s *emulated.Element[S], opts ...algopts.Alge
 //
 // ⚠️   p must NOT be (0,0).
 // ⚠️   s1 and s2 must NOT be 0.
-//
-// It uses the logic from ScalarMul() for s1 * g and the logic from ScalarMulBase() for s2 * g.
 //
 // JointScalarMulBase is used to verify an ECDSA signature (r,s) on the
 // secp256k1 curve. In this case, p is a public key, s2=r/s and s1=hash/s.
@@ -907,4 +936,16 @@ func (c *Curve[B, S]) MultiScalarMul(p []*AffinePoint[B], s []*emulated.Element[
 		res = c.Add(p[0], res)
 		return res, nil
 	}
+}
+
+func (c *Curve[Base, Scalars]) Print(P AffinePoint[Base]) {
+	xstr, err := c.baseApi.String(&P.X)
+	if err != nil {
+		panic(err)
+	}
+	ystr, err := c.baseApi.String(&P.Y)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Printf("E([%s, %s])\n", xstr, ystr)
 }

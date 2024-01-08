@@ -451,3 +451,8 @@ func (c *Curve) packScalarToVar(s *Scalar) frontend.Variable {
 
 // ScalarField defines the [emulated.FieldParams] implementation on a one limb of the scalar field.
 type ScalarField = emparams.BLS12315Fr
+
+// temporary
+func (c *Curve) Print(P G1Affine) {
+	c.api.Println(P.X, P.Y)
+}
