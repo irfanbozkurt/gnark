@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	goCompress "github.com/consensys/compress"
 	goLzss "github.com/consensys/compress/lzss"
@@ -26,7 +27,8 @@ func checkError(err error) {
 	}
 }
 
-func getCircuits() (circuit, assignment lzss.TestCompressionCircuit, err error) {
+// dictSize is in KB
+func getCircuits(level goLzss.Level, dictSize int) (circuit, assignment lzss.TestCompressionCircuit, err error) {
 	//d, err := os.ReadFile(name + "/data.bin")
 	//if err != nil { return }
 	d := []byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}
@@ -35,10 +37,14 @@ func getCircuits() (circuit, assignment lzss.TestCompressionCircuit, err error) 
 	if err != nil {
 		return
 	}
+	dictSize *= 1024
+	if dictSize > len(dict) {
+		dict = append(dict, make([]byte, dictSize-len(dict))...)
+	} else {
+		dict = dict[:dictSize]
+	}
 
 	// compress
-
-	level := goLzss.GoodCompression
 
 	compressor, err := goLzss.NewCompressor(dict, level)
 	if err != nil {
@@ -54,6 +60,8 @@ func getCircuits() (circuit, assignment lzss.TestCompressionCircuit, err error) 
 	if err != nil {
 		return
 	}
+
+	dict = goLzss.AugmentDict(dict)
 
 	circuit = lzss.TestCompressionCircuit{
 		C:     make([]frontend.Variable, cStream.Len()),
@@ -76,13 +84,24 @@ func getCircuits() (circuit, assignment lzss.TestCompressionCircuit, err error) 
 		return
 	}
 
+	dictStream, err := goCompress.NewStream(dict, 8)
+	if err != nil {
+		return
+	}
+	dictSum, err := checksumStream(dictStream, len(dict))
+	if err != nil {
+		return
+	}
+
 	assignment = lzss.TestCompressionCircuit{
-		CChecksum: cSum,
-		DChecksum: dSum,
-		C:         test_vector_utils.ToVariableSlice(cStream.D),
-		D:         test_vector_utils.ToVariableSlice(d),
-		CLen:      cStream.Len(),
-		DLen:      len(d),
+		CChecksum:    cSum,
+		DChecksum:    dSum,
+		DictChecksum: dictSum,
+		C:            test_vector_utils.ToVariableSlice(cStream.D),
+		D:            test_vector_utils.ToVariableSlice(d),
+		Dict:         test_vector_utils.ToVariableSlice(dict),
+		CLen:         cStream.Len(),
+		DLen:         len(d),
 	}
 
 	return
@@ -90,7 +109,11 @@ func getCircuits() (circuit, assignment lzss.TestCompressionCircuit, err error) 
 
 func main() {
 
-	circuit, assignment, err := getCircuits()
+	level := flag.Int("level", 1, "compression level - defaults to 2: \"good compression\"")
+	dictSize := flag.Int("dict", -1, "dictionary size in KB - defaults to 64KB")
+	flag.Parse()
+
+	circuit, assignment, err := getCircuits(goLzss.Level(*level), *dictSize)
 	checkError(err)
 
 	var start int64
