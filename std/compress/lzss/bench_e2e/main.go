@@ -26,7 +26,7 @@ func checkError(err error) {
 	}
 }
 
-func getCircuits() (circuit, assignment lzss.CompressionCircuit, err error) {
+func getCircuits() (circuit, assignment lzss.TestCompressionCircuit, err error) {
 	//d, err := os.ReadFile(name + "/data.bin")
 	//if err != nil { return }
 	d := []byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}
@@ -55,10 +55,10 @@ func getCircuits() (circuit, assignment lzss.CompressionCircuit, err error) {
 		return
 	}
 
-	circuit = lzss.CompressionCircuit{
+	circuit = lzss.TestCompressionCircuit{
 		C:     make([]frontend.Variable, cStream.Len()),
 		D:     make([]frontend.Variable, len(d)),
-		Dict:  dict,
+		Dict:  make([]frontend.Variable, 64000),
 		Level: level,
 	}
 
@@ -76,7 +76,7 @@ func getCircuits() (circuit, assignment lzss.CompressionCircuit, err error) {
 		return
 	}
 
-	assignment = lzss.CompressionCircuit{
+	assignment = lzss.TestCompressionCircuit{
 		CChecksum: cSum,
 		DChecksum: dSum,
 		C:         test_vector_utils.ToVariableSlice(cStream.D),

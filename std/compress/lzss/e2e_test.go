@@ -57,7 +57,7 @@ func testCompressionE2E(t *testing.T, d, dict []byte, name string) {
 	dictStream, err := goCompress.NewStream(dict, 8)
 	assert.NoError(t, err)
 
-	dictSum, err := check(dictStream, len(dict))
+	dictSum, err := checksumStream(dictStream, len(dict))
 	assert.NoError(t, err)
 
 	circuit := TestCompressionCircuit{

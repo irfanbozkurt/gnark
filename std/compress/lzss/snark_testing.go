@@ -144,7 +144,7 @@ func (c *TestCompressionCircuit) Define(api frontend.API) error {
 	if err := checksumSnark(api, dPacked, c.DLen, c.DChecksum); err != nil {
 		return err
 	}
-	if err := checkSnark(api, dictPacked, len(c.Dict), c.DictChecksum); err != nil {
+	if err := checksumSnark(api, dictPacked, len(c.Dict), c.DictChecksum); err != nil {
 		return err
 	}
 
