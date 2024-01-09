@@ -13,6 +13,7 @@ import (
 	"github.com/consensys/gnark/profile"
 	"github.com/consensys/gnark/std/compress/lzss"
 	test_vector_utils "github.com/consensys/gnark/std/utils/test_vectors_utils"
+	"math/rand"
 	"os"
 	"time"
 )
@@ -39,7 +40,11 @@ func getCircuits(level goLzss.Level, dictSize int) (circuit, assignment lzss.Tes
 	}
 	dictSize *= 1024
 	if dictSize > len(dict) {
-		dict = append(dict, make([]byte, dictSize-len(dict))...)
+		diff := dictSize - len(dict)
+		dict = append(dict, make([]byte, diff)...)
+		for i := range dict[len(dict)-diff:] { // fill it with random bytes so that it's not all zeros
+			dict[len(dict)-diff+i] = byte(rand.Int31()) // #nosec G404
+		}
 	} else {
 		dict = dict[:dictSize]
 	}
