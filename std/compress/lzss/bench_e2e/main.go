@@ -8,13 +8,11 @@ import (
 	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark-crypto/ecc/bls12-377/fr"
 	"github.com/consensys/gnark-crypto/hash"
-	"github.com/consensys/gnark/backend/plonk"
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/frontend/cs/scs"
 	"github.com/consensys/gnark/profile"
 	"github.com/consensys/gnark/std/compress/lzss"
 	test_vector_utils "github.com/consensys/gnark/std/utils/test_vectors_utils"
-	"github.com/consensys/gnark/test/unsafekzg"
 	"os"
 	"time"
 )
@@ -29,11 +27,13 @@ func checkError(err error) {
 
 // dictSize is in KB
 func getCircuits(level goLzss.Level, dictSize int) (circuit, assignment lzss.TestCompressionCircuit, err error) {
-	//d, err := os.ReadFile(name + "/data.bin")
-	//if err != nil { return }
-	d := []byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}
+	d, err := os.ReadFile(name + "/data.bin")
+	if err != nil {
+		return
+	}
 
-	dict, err := os.ReadFile("../testdata/dict_naive")
+	var dict []byte
+	dict, err = os.ReadFile("../testdata/dict_naive")
 	if err != nil {
 		return
 	}
@@ -110,10 +110,10 @@ func getCircuits(level goLzss.Level, dictSize int) (circuit, assignment lzss.Tes
 func main() {
 
 	level := flag.Int("level", 1, "compression level - defaults to 2: \"good compression\"")
-	dictSize := flag.Int("dict", -1, "dictionary size in KB - defaults to 64KB")
+	dictSize := flag.Int("dict", 64, "dictionary size in KB - defaults to 64KB")
 	flag.Parse()
 
-	circuit, assignment, err := getCircuits(goLzss.Level(*level), *dictSize)
+	circuit, _, err := getCircuits(goLzss.Level(*level), *dictSize)
 	checkError(err)
 
 	var start int64
@@ -129,31 +129,33 @@ func main() {
 	fmt.Println("compilation")
 	p := profile.Start()
 	resetTimer()
-	cs, err := frontend.Compile(ecc.BLS12_377.ScalarField(), scs.NewBuilder, &circuit, frontend.WithCapacity(70620000*2))
+	_, err = frontend.Compile(ecc.BLS12_377.ScalarField(), scs.NewBuilder, &circuit, frontend.WithCapacity(70620000*2))
 	checkError(err)
 
 	p.Stop()
 	fmt.Println(1+len(circuit.D)/1024, "KB:", p.NbConstraints(), "constraints")
 	resetTimer()
 
-	// setup
-	fmt.Println("setup")
-	ckzg, lkzg, err := unsafekzg.NewSRS(cs)
-	checkError(err)
+	/*
+		// setup
+		fmt.Println("setup")
+		ckzg, lkzg, err := unsafekzg.NewSRS(cs)
+		checkError(err)
 
-	pk, _, err := plonk.Setup(cs, ckzg, lkzg)
-	checkError(err)
-	resetTimer()
+		pk, _, err := plonk.Setup(cs, ckzg, lkzg)
+		checkError(err)
+		resetTimer()
 
-	// proof
-	fmt.Println("proof")
+		// proof
+		fmt.Println("proof")
 
-	wt, err := frontend.NewWitness(&assignment, ecc.BLS12_377.ScalarField())
-	checkError(err)
+		wt, err := frontend.NewWitness(&assignment, ecc.BLS12_377.ScalarField())
+		checkError(err)
 
-	_, err = plonk.Prove(cs, pk, wt)
-	checkError(err)
-	resetTimer()
+		_, err = plonk.Prove(cs, pk, wt)
+		checkError(err)
+		resetTimer()
+	*/
 }
 
 func checksumStream(s goCompress.Stream, padTo int) (checksum fr.Element, err error) {
