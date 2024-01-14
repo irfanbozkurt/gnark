@@ -3,6 +3,12 @@ package lzss
 import (
 	"compress/gzip"
 	"fmt"
+	"os"
+	"time"
+
+	"os"
+	"time"
+
 	goCompress "github.com/consensys/compress"
 	"github.com/consensys/compress/lzss"
 	"github.com/consensys/gnark-crypto/ecc"
@@ -15,8 +21,6 @@ import (
 	"github.com/consensys/gnark/std/compress"
 	"github.com/consensys/gnark/std/hash/mimc"
 	test_vector_utils "github.com/consensys/gnark/std/utils/test_vectors_utils"
-	"os"
-	"time"
 )
 
 type DecompressionTestCircuit struct {
@@ -137,10 +141,13 @@ func (c *TestCompressionCircuit) Define(api frontend.API) error {
 	dictPacked := compress.Pack(api, c.Dict, 8)
 
 	fmt.Println("computing checksum")
-	if err := checkSnark(api, cPacked, c.CLen, c.CChecksum); err != nil {
+	if err := checksumSnark(api, cPacked, c.CLen, c.CChecksum); err != nil {
 		return err
 	}
-	if err := checkSnark(api, dPacked, c.DLen, c.DChecksum); err != nil {
+	if err := checksumSnark(api, dPacked, c.DLen, c.DChecksum); err != nil {
+		return err
+	}
+	if err := checksumSnark(api, dictPacked, len(c.Dict), c.DictChecksum); err != nil {
 		return err
 	}
 	if err := checkSnark(api, dictPacked, len(c.Dict), c.DictChecksum); err != nil {
@@ -161,7 +168,7 @@ func (c *TestCompressionCircuit) Define(api frontend.API) error {
 	return nil
 }
 
-func check(s goCompress.Stream, padTo int) (checksum fr.Element, err error) {
+func checksumStream(s goCompress.Stream, padTo int) (checksum fr.Element, err error) {
 
 	s.D = append(s.D, make([]int, padTo-len(s.D))...)
 
@@ -170,7 +177,8 @@ func check(s goCompress.Stream, padTo int) (checksum fr.Element, err error) {
 	return
 }
 
-func checkSnark(api frontend.API, e []frontend.Variable, eLen, checksum frontend.Variable) error {
+func checksumSnark(api frontend.API, e []frontend.Variable, eLen, checksum frontend.Variable) error {
+	api.Println(e...)
 	hsh, err := mimc.NewMiMC(api)
 	if err != nil {
 		return err

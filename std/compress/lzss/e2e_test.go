@@ -1,10 +1,11 @@
 package lzss
 
 import (
-	goCompress "github.com/consensys/compress"
-	"github.com/consensys/compress/lzss"
 	"os"
 	"testing"
+
+	goCompress "github.com/consensys/compress"
+	"github.com/consensys/compress/lzss"
 
 	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark/backend"
@@ -42,13 +43,13 @@ func testCompressionE2E(t *testing.T, d, dict []byte, name string) {
 	cStream, err := goCompress.NewStream(c, uint8(level))
 	assert.NoError(t, err)
 
-	cSum, err := check(cStream, cStream.Len())
+	cSum, err := checksumStream(cStream, cStream.Len())
 	assert.NoError(t, err)
 
 	dStream, err := goCompress.NewStream(d, 8)
 	assert.NoError(t, err)
 
-	dSum, err := check(dStream, len(d))
+	dSum, err := checksumStream(dStream, len(d))
 	assert.NoError(t, err)
 
 	dict = lzss.AugmentDict(dict)
@@ -56,7 +57,7 @@ func testCompressionE2E(t *testing.T, d, dict []byte, name string) {
 	dictStream, err := goCompress.NewStream(dict, 8)
 	assert.NoError(t, err)
 
-	dictSum, err := check(dictStream, len(dict))
+	dictSum, err := checksumStream(dictStream, len(dict))
 	assert.NoError(t, err)
 
 	circuit := TestCompressionCircuit{
@@ -91,7 +92,7 @@ func testChecksum(t *testing.T, d goCompress.Stream) {
 		InputLen: d.Len(),
 	}
 
-	sum, err := check(d, d.Len())
+	sum, err := checksumStream(d, d.Len())
 	assert.NoError(t, err)
 
 	assignment := checksumTestCircuit{
@@ -109,7 +110,7 @@ type checksumTestCircuit struct {
 }
 
 func (c *checksumTestCircuit) Define(api frontend.API) error {
-	if err := checkSnark(api, c.Inputs, len(c.Inputs), c.Sum); err != nil {
+	if err := checksumSnark(api, c.Inputs, len(c.Inputs), c.Sum); err != nil {
 		return err
 	}
 	return nil

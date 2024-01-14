@@ -8,6 +8,8 @@ github.com/consensys/compress v0.2.0 h1:aBg3YJe8ZFUxm/RF+ppx/URFsZq3aJ6o8isLDQys
 github.com/consensys/compress v0.2.0/go.mod h1:Ne8+cGKjqgjF1dlHapZx38pHzWpaBYhsKxQa+JPl0zM=
 github.com/consensys/compress v0.2.1-0.20240103160955-e4fcce3dc96a h1:0Y7y1JXtP8O/nL7LHpBt62pGZ87so63uWrYqUoq920s=
 github.com/consensys/compress v0.2.1-0.20240103160955-e4fcce3dc96a/go.mod h1:Ne8+cGKjqgjF1dlHapZx38pHzWpaBYhsKxQa+JPl0zM=
+github.com/consensys/compress v0.2.2-0.20240108174419-fdd05033b659 h1:Un5NrCc9i+zEsKcObRGJphoUp80/UNjRDHEl48j7Vw0=
+github.com/consensys/compress v0.2.2-0.20240108174419-fdd05033b659/go.mod h1:Ne8+cGKjqgjF1dlHapZx38pHzWpaBYhsKxQa+JPl0zM=
 github.com/consensys/gnark-crypto v0.12.2-0.20231221171913-5d5eded6bb15 h1:mcxhrDtXKIepsKXofxSuXRst+41yzAcoNWKIotsjMTQ=
 github.com/consensys/gnark-crypto v0.12.2-0.20231221171913-5d5eded6bb15/go.mod h1:wKqwsieaKPThcFkHe0d0zMsbHEUWFmZcG7KBCse210o=
 github.com/coreos/go-systemd/v22 v22.5.0/go.mod h1:Y58oyj3AT4RCenI/lSvhwexgC+NSVTIJ3seZv2GcEnc=
