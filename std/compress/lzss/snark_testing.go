@@ -6,9 +6,6 @@ import (
 	"os"
 	"time"
 
-	"os"
-	"time"
-
 	goCompress "github.com/consensys/compress"
 	"github.com/consensys/compress/lzss"
 	"github.com/consensys/gnark-crypto/ecc"
@@ -150,7 +147,7 @@ func (c *TestCompressionCircuit) Define(api frontend.API) error {
 	if err := checksumSnark(api, dictPacked, len(c.Dict), c.DictChecksum); err != nil {
 		return err
 	}
-	if err := checkSnark(api, dictPacked, len(c.Dict), c.DictChecksum); err != nil {
+	if err := checksumSnark(api, dictPacked, len(c.Dict), c.DictChecksum); err != nil {
 		return err
 	}
 
