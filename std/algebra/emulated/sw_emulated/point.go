@@ -1070,17 +1070,17 @@ func (c *Curve[B, S]) JointScalarMulHalfSize(p1, p2 *AffinePoint[B], s1, s2 *emu
 	nbits := st.Modulus().BitLen() >> 1
 
 	for i := nbits - 1; i > 0; i-- {
+		// Acc = [2]Acc ± P1 ± P2
 		B1 = &AffinePoint[B]{
-			X: p1Neg.X,
+			X: p1.X,
 			Y: *c.baseApi.Select(s1bits[i], &p1.Y, &p1Neg.Y),
 		}
 		Acc = c.doubleAndAdd(Acc, B1)
 		B1 = &AffinePoint[B]{
-			X: p2Neg.X,
+			X: p2.X,
 			Y: *c.baseApi.Select(s2bits[i], &p2.Y, &p2Neg.Y),
 		}
 		Acc = c.Add(Acc, B1)
-
 	}
 
 	// i = 0
