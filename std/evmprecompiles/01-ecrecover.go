@@ -72,14 +72,11 @@ func ECRecover(api frontend.API, msg emulated.Element[emulated.Secp256k1Fr],
 	Rynormal := fpField.Reduce(&R.Y)
 	Rybits := fpField.ToBits(Rynormal)
 	api.AssertIsEqual(vbits[0], Rybits[0])
-	// compute rinv = r^{-1} mod fr
-	rinv := frField.Inverse(&r)
-	// compute u1 = -msg * rinv
-	u1 := frField.MulMod(&msg, rinv)
+	// compute u1 = -msg * r^{-1} mod fr
+	u1 := frField.Div(&msg, &r)
 	u1 = frField.Neg(u1)
-	// compute u2 = s * rinv
-	u2 := frField.MulMod(&s, rinv)
-
+	// compute u2 = s * r^{-1} mod fr
+	u2 := frField.Div(&s, &r)
 	// 💡 Optimization idea:
 	// we need to check that [u1]G + [u2]R == P which is equivalent to:
 	// [v]P == [v*u2]R + [v*u1]G if we multiply by some integer v.

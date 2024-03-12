@@ -67,7 +67,7 @@ type Curve[Base, Scalars emulated.FieldParams] struct {
 	// g is the generator (base point) of the curve.
 	g AffinePoint[Base]
 
-	// gm are the pre-computed multiples the generator (base point) of the curve.
+	// gm are the pre-computed doubles the generator (base point) of the curve.
 	gm []AffinePoint[Base]
 
 	a            emulated.Element[Base]
@@ -83,7 +83,7 @@ func (c *Curve[B, S]) Generator() *AffinePoint[B] {
 	return &c.g
 }
 
-// GeneratorMultiples returns the pre-computed multiples of the base point of the curve. The method does not copy and
+// GeneratorMultiples returns the pre-computed doubles of the base point of the curve. The method does not copy and
 // modifying the returned element leads to undefined behaviour!
 func (c *Curve[B, S]) GeneratorMultiples() []AffinePoint[B] {
 	return c.gm
@@ -483,7 +483,7 @@ func (c *Curve[B, S]) Mux(sel frontend.Variable, inputs ...*AffinePoint[B]) *Aff
 	}
 }
 
-// ScalarMul computes s * p and returns it. It doesn't modify p nor s.
+// ScalarMul computes [s]p and returns it. It doesn't modify p nor s.
 // This function doesn't check that the p is on the curve. See AssertIsOnCurve.
 //
 // ScalarMul calls scalarMulGeneric or scalarMulGLV depending on whether an efficient endomorphism is available.
@@ -497,8 +497,8 @@ func (c *Curve[B, S]) ScalarMul(p *AffinePoint[B], s *emulated.Element[S], opts 
 	}
 }
 
-// scalarMulGLV computes s * Q using an efficient endomorphism and returns it. It doesn't modify Q nor s.
-// It implements algorithm 1 of [Halo] (see Section 6.2 and appendix C).
+// scalarMulGLV computes [s]Q using an efficient endomorphism and returns it. It doesn't modify Q nor s.
+// It implements an optimized version based on algorithm 1 of [Halo] (see Section 6.2 and appendix C).
 //
 // ⚠️  The scalar s must be nonzero and the point Q different from (0,0) unless [algopts.WithCompleteArithmetic] is set.
 // (0,0) is not on the curve but we conventionally take it as the
@@ -511,8 +511,6 @@ func (c *Curve[B, S]) scalarMulGLV(Q *AffinePoint[B], s *emulated.Element[S], op
 	if err != nil {
 		panic(err)
 	}
-	var st S
-	frModulus := c.scalarApi.Modulus()
 	addFn := c.Add
 	var selector frontend.Variable
 	if cfg.CompleteArithmetic {
@@ -522,40 +520,50 @@ func (c *Curve[B, S]) scalarMulGLV(Q *AffinePoint[B], s *emulated.Element[S], op
 		one := c.baseApi.One()
 		Q = c.Select(selector, &AffinePoint[B]{X: *one, Y: *one}, Q)
 	}
-	sd, err := c.scalarApi.NewHint(decomposeScalarG1, 7, s, c.eigenvalue, frModulus)
+
+	// We use the endomorphism à la GLV to compute [s]Q as
+	// 		[s1]Q + [s2]Φ(Q)
+	// the sub-scalars s1, s2 can be negative (bigints) in the hint. If so,
+	// they will be reduced in-circuit modulo the SNARK scalar field and not
+	// the emulated field. So we return in the hint |s1|, |s2| and boolean
+	// flags sdBits to negate the points Q, Φ(Q) instead of the corresponding
+	// sub-scalars.
+
+	// decompose s into s1 and s2
+	sd, err := c.scalarApi.NewHint(decomposeScalarG1Subscalars, 2, s, c.eigenvalue)
 	if err != nil {
 		panic(fmt.Sprintf("compute GLV decomposition: %v", err))
 	}
-	s1, s2, s3, s4, s5, s6 := sd[0], sd[1], sd[3], sd[4], sd[5], sd[6]
-
+	s1, s2 := sd[0], sd[1]
+	sdBits, err := c.scalarApi.NewHintWithNativeOutput(decomposeScalarG1Signs, 2, s, c.eigenvalue)
+	if err != nil {
+		panic(fmt.Sprintf("compute GLV decomposition bits: %v", err))
+	}
+	selector1, selector2 := sdBits[0], sdBits[1]
+	s3 := c.scalarApi.Select(selector1, c.scalarApi.Neg(s1), s1)
+	s4 := c.scalarApi.Select(selector2, c.scalarApi.Neg(s2), s2)
+	// s == s3 + [λ]s4
 	c.scalarApi.AssertIsEqual(
-		c.scalarApi.Add(s5, c.scalarApi.Mul(s6, c.eigenvalue)),
-		c.scalarApi.Add(s, c.scalarApi.Mul(frModulus, sd[2])),
+		c.scalarApi.Add(s3, c.scalarApi.Mul(s4, c.eigenvalue)),
+		s,
 	)
-
-	// s1, s2 can be negative (bigints) in the hint, but will be reduced
-	// in-circuit modulo the SNARK scalar field and not the emulated field. So
-	// we return in the hint both |s1|, |s2| and the flags s3=0/1, s4=0/1 to
-	// negate the point instead of the corresponding scalar. Since s3, s4 are
-	// either 0 or 1, we only need to check the first limb is zero or not.
-	selector1 := c.api.IsZero(s3.Limbs[0])
-	selector2 := c.api.IsZero(s4.Limbs[0])
 
 	s1bits := c.scalarApi.ToBits(s1)
 	s2bits := c.scalarApi.ToBits(s2)
+	var st S
 	nbits := st.Modulus().BitLen()>>1 + 2
 
-	var Acc *AffinePoint[B]
 	// precompute -Q, -Φ(Q), Φ(Q)
 	var tableQ, tablePhiQ [3]*AffinePoint[B]
+	negQY := c.baseApi.Neg(&Q.Y)
 	tableQ[1] = &AffinePoint[B]{
 		X: Q.X,
-		Y: *c.baseApi.Select(selector1, c.baseApi.Neg(&Q.Y), &Q.Y),
+		Y: *c.baseApi.Select(selector1, negQY, &Q.Y),
 	}
 	tableQ[0] = c.Neg(tableQ[1])
 	tablePhiQ[1] = &AffinePoint[B]{
 		X: *c.baseApi.Mul(&Q.X, c.thirdRootOne),
-		Y: *c.baseApi.Select(selector2, c.baseApi.Neg(&Q.Y), &Q.Y),
+		Y: *c.baseApi.Select(selector2, negQY, &Q.Y),
 	}
 	tablePhiQ[0] = c.Neg(tablePhiQ[1])
 	tableQ[2] = c.triple(tableQ[1])
@@ -564,16 +572,17 @@ func (c *Curve[B, S]) scalarMulGLV(Q *AffinePoint[B], s *emulated.Element[S], op
 		Y: *c.baseApi.Select(selector2, c.baseApi.Neg(&tableQ[2].Y), &tableQ[2].Y),
 	}
 
-	// Starting with Acc = Q + Φ(Q)
-	Acc = c.Add(tableQ[1], tablePhiQ[1])
+	// we suppose that the first bits of the sub-scalars are 1 and set:
+	// 		Acc = Q + Φ(Q)
+	Acc := c.Add(tableQ[1], tablePhiQ[1])
 
 	// At each iteration we need to compute:
 	// 		[2]Acc ± Q ± Φ(Q).
 	// We can compute [2]Acc and look up the (precomputed) point P from:
 	// 		B1 = Q+Φ(Q)
 	// 		B2 = -Q-Φ(Q)
-	// 		B3 = -Φ(Q)+Q
-	// 		B4 = Φ(Q)-Q
+	// 		B3 = Q-Φ(Q)
+	// 		B4 = -QΦ(Q)
 	//
 	// If we extend this by merging two iterations, we need to look up P and P'
 	// both from {B1, B2, B3, B4} and compute:
@@ -630,15 +639,17 @@ func (c *Curve[B, S]) scalarMulGLV(Q *AffinePoint[B], s *emulated.Element[S], op
 	// T = [3](Φ(Q) - Q)
 	// P = B4 and P' = B4
 	T16 := c.Neg(T11)
+	// note that half the points are negatives of the other half,
+	// hence have the same X coordinates.
 
 	// when nbits is odd, we need to handle the first iteration separately
 	if nbits%2 == 0 {
-		// Acc = [2]Acc ± Q ± R ± Φ(Q) ± Φ(R)
+		// Acc = [2]Acc ± Q ± Φ(Q)
 		T := &AffinePoint[B]{
 			X: *c.baseApi.Select(c.api.Xor(s1bits[nbits-1], s2bits[nbits-1]), &T12.X, &T5.X),
 			Y: *c.baseApi.Lookup2(s1bits[nbits-1], s2bits[nbits-1], &T5.Y, &T12.Y, &T15.Y, &T2.Y),
 		}
-		// We don't use doubleAndAdd as it would involve edge cases
+		// We don't use doubleAndAdd here as it would involve edge cases
 		// when bits are 00 (T==-Acc) or 11 (T==Acc).
 		Acc = c.double(Acc)
 		Acc = c.add(Acc, T)
@@ -654,14 +665,14 @@ func (c *Curve[B, S]) scalarMulGLV(Q *AffinePoint[B], s *emulated.Element[S], op
 			c.api.Mul(s1bits[i-1], 4),
 			c.api.Mul(s2bits[i-1], 8),
 		)
-		// selectorX takes values in [0,7] with:
+		// selectorX takes values in [0,7] s.t.:
 		// 		- when selectorY < 8: selectorX = selectorY
 		// 		- when selectorY >= 8: selectorX = 15 - selectorY
 		selectorX := c.api.Add(
 			c.api.Mul(selectorY, c.api.Sub(1, c.api.Mul(s2bits[i-1], 2))),
 			c.api.Mul(s2bits[i-1], 15),
 		)
-		// Bi.Y are distints so we need a 16-to-1 multiplexer,
+		// Bi.Y are distincts so we need a 16-to-1 multiplexer,
 		// but only half of the Bi.X are distinct so we need a 8-to-1.
 		T := &AffinePoint[B]{
 			X: *c.baseApi.Mux(selectorX,
@@ -678,8 +689,9 @@ func (c *Curve[B, S]) scalarMulGLV(Q *AffinePoint[B], s *emulated.Element[S], op
 	}
 
 	// i = 0
-	// When cfg.CompleteArithmetic is set, we use AddUnified instead of Add. This means
-	// when s=0 then Acc=(0,0) because AddUnified(Q, -Q) = (0,0).
+	// subtract the Q, Φ(Q) if the first bits are 0.
+	// When cfg.CompleteArithmetic is set, we use AddUnified instead of Add.
+	// This means when s=0 then Acc=(0,0) because AddUnified(Q, -Q) = (0,0).
 	tableQ[0] = addFn(tableQ[0], Acc)
 	Acc = c.Select(s1bits[0], Acc, tableQ[0])
 	tablePhiQ[0] = addFn(tablePhiQ[0], Acc)
@@ -693,7 +705,7 @@ func (c *Curve[B, S]) scalarMulGLV(Q *AffinePoint[B], s *emulated.Element[S], op
 	return Acc
 }
 
-// scalarMulGeneric computes s * p and returns it. It doesn't modify p nor s.
+// scalarMulGeneric computes [s]p and returns it. It doesn't modify p nor s.
 // This function doesn't check that the p is on the curve. See AssertIsOnCurve.
 //
 // ⚠️  p must not be (0,0) and s must not be 0, unless [algopts.WithCompleteArithmetic] option is set.
@@ -763,7 +775,7 @@ func (c *Curve[B, S]) scalarMulGeneric(p *AffinePoint[B], s *emulated.Element[S]
 	return R0
 }
 
-// jointScalarMul computes s1 * p1 + s2 * p2 and returns it. It doesn't modify the inputs.
+// jointScalarMul computes [s1]p1 + [s2]p2 and returns it. It doesn't modify the inputs.
 // This function doesn't check that the p1 and p2 are on the curve. See AssertIsOnCurve.
 //
 // jointScalarMul calls jointScalarMulGeneric or jointScalarMulGLV depending on whether an efficient endomorphism is available.
@@ -853,68 +865,86 @@ func (c *Curve[B, S]) jointScalarMulGLV(p1, p2 *AffinePoint[B], s1, s2 *emulated
 }
 
 // jointScalarMulGLVUnsafe computes [s]Q + [t]R using Shamir's trick with an efficient endomorphism and returns it. It doesn't modify Q, R nor s, t.
-// ⚠️  The scalars must be nonzero and the points different from (0,0).
+// ⚠️  The scalars must be nonzero and the points
+//   - ≠ (0,0),
+//   - P ≠ ±Q,
 func (c *Curve[B, S]) jointScalarMulGLVUnsafe(Q, R *AffinePoint[B], s, t *emulated.Element[S]) *AffinePoint[B] {
-	var st S
-	frModulus := c.scalarApi.Modulus()
-	sd, err := c.scalarApi.NewHint(decomposeScalarG1, 7, s, c.eigenvalue, frModulus)
+	// We use the endomorphism à la GLV to compute [s]Q + [t]R as
+	// 		[s1]Q + [s2]Φ(Q) + [t1]R + [t2]Φ(R)
+	// the sub-scalars s1, s2, t1, t2 can be negative (bigints) in the hint. If
+	// so, they will be reduced in-circuit modulo the SNARK scalar field and
+	// not the emulated field. So we return in the hint |s1|, |s2|, |t1|, |t2|
+	// and boolean flags sdBits and tdBits to negate the points Q, Φ(Q), R and
+	// Φ(R) instead of the corresponding sub-scalars.
+
+	// decompose s into s1 and s2
+	sd, err := c.scalarApi.NewHint(decomposeScalarG1Subscalars, 2, s, c.eigenvalue)
 	if err != nil {
 		// err is non-nil only for invalid number of inputs
 		panic(err)
 	}
-	s1, s2, s3, s4, s5, s6 := sd[0], sd[1], sd[3], sd[4], sd[5], sd[6]
+	s1, s2 := sd[0], sd[1]
+	sdBits, err := c.scalarApi.NewHintWithNativeOutput(decomposeScalarG1Signs, 2, s, c.eigenvalue)
+	if err != nil {
+		panic(fmt.Sprintf("compute s GLV decomposition bits: %v", err))
+	}
+	selector1, selector2 := sdBits[0], sdBits[1]
+	s3 := c.scalarApi.Select(selector1, c.scalarApi.Neg(s1), s1)
+	s4 := c.scalarApi.Select(selector2, c.scalarApi.Neg(s2), s2)
+	// s == s3 + [λ]s4
+	c.scalarApi.AssertIsEqual(
+		c.scalarApi.Add(s3, c.scalarApi.Mul(s4, c.eigenvalue)),
+		s,
+	)
 
-	td, err := c.scalarApi.NewHint(decomposeScalarG1, 7, t, c.eigenvalue, frModulus)
+	// decompose t into t1 and t2
+	td, err := c.scalarApi.NewHint(decomposeScalarG1Subscalars, 2, t, c.eigenvalue)
 	if err != nil {
 		// err is non-nil only for invalid number of inputs
 		panic(err)
 	}
-	t1, t2, t3, t4, t5, t6 := td[0], td[1], td[3], td[4], td[5], td[6]
-
+	t1, t2 := td[0], td[1]
+	tdBits, err := c.scalarApi.NewHintWithNativeOutput(decomposeScalarG1Signs, 2, t, c.eigenvalue)
+	if err != nil {
+		panic(fmt.Sprintf("compute t GLV decomposition bits: %v", err))
+	}
+	selector3, selector4 := tdBits[0], tdBits[1]
+	t3 := c.scalarApi.Select(selector3, c.scalarApi.Neg(t1), t1)
+	t4 := c.scalarApi.Select(selector4, c.scalarApi.Neg(t2), t2)
+	// t == t3 + [λ]t4
 	c.scalarApi.AssertIsEqual(
-		c.scalarApi.Add(s5, c.scalarApi.Mul(s6, c.eigenvalue)),
-		c.scalarApi.Add(s, c.scalarApi.Mul(frModulus, sd[2])),
+		c.scalarApi.Add(t3, c.scalarApi.Mul(t4, c.eigenvalue)),
+		t,
 	)
-	c.scalarApi.AssertIsEqual(
-		c.scalarApi.Add(t5, c.scalarApi.Mul(t6, c.eigenvalue)),
-		c.scalarApi.Add(t, c.scalarApi.Mul(frModulus, td[2])),
-	)
-
-	// s1, s2 can be negative (bigints) in the hint, but will be reduced
-	// in-circuit modulo the SNARK scalar field and not the emulated field. So
-	// we return in the hint both |s1|, |s2| and the flags s3=0/1, s4=0/1 to
-	// negate the point instead of the corresponding scalar. Since s3, s4 are
-	// either 0 or 1, we only need to check the first limb is zero or not.
-	// Same goes for t1, t2.
-	selector1 := c.api.IsZero(s3.Limbs[0])
-	selector2 := c.api.IsZero(s4.Limbs[0])
-	selector3 := c.api.IsZero(t3.Limbs[0])
-	selector4 := c.api.IsZero(t4.Limbs[0])
 
 	// precompute -Q, -Φ(Q), Φ(Q)
 	var tableQ, tablePhiQ [2]*AffinePoint[B]
+	negQY := c.baseApi.Neg(&Q.Y)
 	tableQ[1] = &AffinePoint[B]{
 		X: Q.X,
-		Y: *c.baseApi.Select(selector1, c.baseApi.Neg(&Q.Y), &Q.Y),
+		Y: *c.baseApi.Select(selector1, negQY, &Q.Y),
 	}
 	tableQ[0] = c.Neg(tableQ[1])
 	tablePhiQ[1] = &AffinePoint[B]{
 		X: *c.baseApi.Mul(&Q.X, c.thirdRootOne),
-		Y: *c.baseApi.Select(selector2, c.baseApi.Neg(&Q.Y), &Q.Y),
+		Y: *c.baseApi.Select(selector2, negQY, &Q.Y),
 	}
 	tablePhiQ[0] = c.Neg(tablePhiQ[1])
+
 	// precompute -R, -Φ(R), Φ(R)
 	var tableR, tablePhiR [2]*AffinePoint[B]
+	negRY := c.baseApi.Neg(&R.Y)
 	tableR[1] = &AffinePoint[B]{
 		X: R.X,
-		Y: *c.baseApi.Select(selector3, c.baseApi.Neg(&R.Y), &R.Y),
+		Y: *c.baseApi.Select(selector3, negRY, &R.Y),
 	}
 	tableR[0] = c.Neg(tableR[1])
 	tablePhiR[1] = &AffinePoint[B]{
 		X: *c.baseApi.Mul(&R.X, c.thirdRootOne),
-		Y: *c.baseApi.Select(selector4, c.baseApi.Neg(&R.Y), &R.Y),
+		Y: *c.baseApi.Select(selector4, negRY, &R.Y),
 	}
 	tablePhiR[0] = c.Neg(tablePhiR[1])
+
 	// precompute Q+R, -Q-R, Q-R, -Q+R, Φ(Q)+Φ(R), -Φ(Q)-Φ(R), Φ(Q)-Φ(R), -Φ(Q)+Φ(R)
 	var tableS, tablePhiS [4]*AffinePoint[B]
 	tableS[0] = tableQ[0]
@@ -936,19 +966,42 @@ func (c *Curve[B, S]) jointScalarMulGLVUnsafe(Q, R *AffinePoint[B], s, t *emulat
 	}
 	tablePhiS[3] = c.Neg(tablePhiS[2])
 
-	// suppose first bit is 1 and set:
-	// Acc = Q + R + Φ(Q) + Φ(R)
+	// we suppose that the first bits of the sub-scalars are 1 and set:
+	// 		Acc = Q + R + Φ(Q) + Φ(R)
 	Acc := c.Add(tableS[1], tablePhiS[1])
+	B1 := Acc
+	// then we conditionally add to Acc either G (the base point) or
+	// conditionally Φ²(G) (if Acc==-G) to avoid incomplete additions in the
+	// loop, because when doing doubleAndAdd(Acc, Bi) as (Acc+Bi)+Acc it might
+	// happen that Acc==Bi or Acc==-Bi. But now we force Acc to be different
+	// than the stored Bi.  However we need at the end to subtract [2^nbits]G
+	// or conditionally [2^nbits]Φ²(G) from the result.
+	//
+	// g0 = G
+	g0 := c.Generator()
+	// g1 = Φ²(G)
+	g1 := &AffinePoint[B]{
+		X: *c.baseApi.Mul(
+			c.baseApi.Mul(&g0.X, c.thirdRootOne), c.thirdRootOne),
+		Y: g0.Y,
+	}
+	selector0 := c.baseApi.IsZero(
+		c.baseApi.Add(&Acc.Y, &g0.Y),
+	)
+	g := c.Select(selector0, g1, g0)
+	// Acc = Q + R + Φ(Q) + Φ(R) + G or
+	// Q + R + Φ(Q) + Φ(R) + Φ²(G) ( = -G+Φ²(G) = -2G-Φ(G) )
+	Acc = c.Add(Acc, g)
 
 	s1bits := c.scalarApi.ToBits(s1)
 	s2bits := c.scalarApi.ToBits(s2)
 	t1bits := c.scalarApi.ToBits(t1)
 	t2bits := c.scalarApi.ToBits(t2)
+	var st S
 	nbits := st.Modulus().BitLen()>>1 + 2
 
-	// At each iteration look up the point P from:
+	// At each iteration we look up the point Bi from:
 	// 		B1  = +Q + R + Φ(Q) + Φ(R)
-	B1 := Acc
 	// 		B2  = +Q + R + Φ(Q) - Φ(R)
 	B2 := c.Add(tableS[1], tablePhiS[2])
 	// 		B3  = +Q + R - Φ(Q) + Φ(R)
@@ -979,10 +1032,10 @@ func (c *Curve[B, S]) jointScalarMulGLVUnsafe(Q, R *AffinePoint[B], s, t *emulat
 	B15 := c.Neg(B2)
 	// 		B16 = -Q - R - Φ(Q) - Φ(R)
 	B16 := c.Neg(B1)
-	// and compute [2]Acc+P. We don't use doubleAndAdd as it involves edge cases.
-	// Note: half of the Bi points have the same X coordinates.
+	// note that half the points are negatives of the other half,
+	// hence have the same X coordinates.
 
-	var P *AffinePoint[B]
+	var Bi *AffinePoint[B]
 	for i := nbits - 1; i > 0; i-- {
 		// selectorY takes values in [0,15]
 		selectorY := c.api.Add(
@@ -991,16 +1044,16 @@ func (c *Curve[B, S]) jointScalarMulGLVUnsafe(Q, R *AffinePoint[B], s, t *emulat
 			c.api.Mul(t1bits[i], 4),
 			c.api.Mul(t2bits[i], 8),
 		)
-		// selectorX takes values in [0,7] with:
+		// selectorX takes values in [0,7] s.t.:
 		// 		- when selectorY < 8: selectorX = selectorY
 		// 		- when selectorY >= 8: selectorX = 15 - selectorY
 		selectorX := c.api.Add(
 			c.api.Mul(selectorY, c.api.Sub(1, c.api.Mul(t2bits[i], 2))),
 			c.api.Mul(t2bits[i], 15),
 		)
-		// Bi.Y are distints so we need a 16-to-1 multiplexer,
+		// Bi.Y are distincts so we need a 16-to-1 multiplexer,
 		// but only half of the Bi.X are distinct so we need a 8-to-1.
-		P = &AffinePoint[B]{
+		Bi = &AffinePoint[B]{
 			X: *c.baseApi.Mux(selectorX,
 				&B16.X, &B8.X, &B14.X, &B6.X, &B12.X, &B4.X, &B10.X, &B2.X,
 			),
@@ -1009,12 +1062,12 @@ func (c *Curve[B, S]) jointScalarMulGLVUnsafe(Q, R *AffinePoint[B], s, t *emulat
 				&B15.Y, &B7.Y, &B13.Y, &B5.Y, &B11.Y, &B3.Y, &B9.Y, &B1.Y,
 			),
 		}
-		Acc = c.double(Acc)
-		Acc = c.add(Acc, P)
+		// Acc = [2]Acc + Bi
+		Acc = c.doubleAndAdd(Acc, Bi)
 	}
 
 	// i = 0
-	// subtract the initial point from the accumulator when first bit was 0
+	// subtract the Q, R, Φ(Q), Φ(R) if the first bits are 0
 	tableQ[0] = c.Add(tableQ[0], Acc)
 	Acc = c.Select(s1bits[0], Acc, tableQ[0])
 	tablePhiQ[0] = c.Add(tablePhiQ[0], Acc)
@@ -1024,62 +1077,39 @@ func (c *Curve[B, S]) jointScalarMulGLVUnsafe(Q, R *AffinePoint[B], s, t *emulat
 	tablePhiR[0] = c.Add(tablePhiR[0], Acc)
 	Acc = c.Select(t2bits[0], Acc, tablePhiR[0])
 
+	// subtract [2^nbits]G or conditionally [2^nbits]Φ²(G)
+	gm := c.GeneratorMultiples()[nbits-1]
+	g = c.Select(
+		selector0,
+		// [2^nbits]Φ²(G)
+		&AffinePoint[B]{
+			X: *c.baseApi.Mul(
+				c.baseApi.Mul(&gm.X, c.thirdRootOne), c.thirdRootOne),
+			Y: gm.Y,
+		},
+		// [2^nbits]G
+		&gm,
+	)
+	Acc = c.Add(Acc, c.Neg(g))
+
 	return Acc
 
 }
 
-// scalarBitsMulGeneric computes s * p and returns it where sBits is the bit decomposition of s. It doesn't modify p nor sBits.
-// ⚠️  p must not be (0,0) and sBits not [0,...,0], unless [algopts.WithCompleteArithmetic] option is set.
-func (c *Curve[B, S]) scalarBitsMulGeneric(p *AffinePoint[B], sBits []frontend.Variable, opts ...algopts.AlgebraOption) *AffinePoint[B] {
-	cfg, err := algopts.NewConfig(opts...)
-	if err != nil {
-		panic(fmt.Sprintf("parse opts: %v", err))
+// ScalarMulBase computes [s]g and returns it where g is the fixed curve generator. It doesn't modify p nor s.
+//
+// ScalarMul calls scalarMulBaseGeneric or scalarMulGLV depending on whether an efficient endomorphism is available.
+func (c *Curve[B, S]) ScalarMulBase(s *emulated.Element[S], opts ...algopts.AlgebraOption) *AffinePoint[B] {
+	if c.eigenvalue != nil && c.thirdRootOne != nil {
+		return c.scalarMulGLV(c.Generator(), s, opts...)
+
+	} else {
+		return c.scalarMulBaseGeneric(s, opts...)
+
 	}
-	var selector frontend.Variable
-	if cfg.CompleteArithmetic {
-		// if p=(0,0) we assign a dummy (0,1) to p and continue
-		selector = c.api.And(c.baseApi.IsZero(&p.X), c.baseApi.IsZero(&p.Y))
-		one := c.baseApi.One()
-		p = c.Select(selector, &AffinePoint[B]{X: *one, Y: *one}, p)
-	}
-
-	var st S
-	n := st.Modulus().BitLen()
-	if cfg.NbScalarBits > 2 && cfg.NbScalarBits < n {
-		n = cfg.NbScalarBits
-	}
-
-	// i = 1
-	Rb := c.triple(p)
-	R0 := c.Select(sBits[1], Rb, p)
-	R1 := c.Select(sBits[1], p, Rb)
-
-	for i := 2; i < n-1; i++ {
-		Rb = c.doubleAndAddSelect(sBits[i], R0, R1)
-		R0 = c.Select(sBits[i], Rb, R0)
-		R1 = c.Select(sBits[i], R1, Rb)
-	}
-
-	// i = n-1
-	Rb = c.doubleAndAddSelect(sBits[n-1], R0, R1)
-	R0 = c.Select(sBits[n-1], Rb, R0)
-
-	// i = 0
-	// we use AddUnified instead of Add. This is because:
-	// 		- when s=0 then R0=P and AddUnified(P, -P) = (0,0). We return (0,0).
-	// 		- when s=1 then R0=P AddUnified(Q, -Q) is well defined. We return R0=P.
-	R0 = c.Select(sBits[0], R0, c.AddUnified(R0, c.Neg(p)))
-
-	if cfg.CompleteArithmetic {
-		// if p=(0,0), return (0,0)
-		zero := c.baseApi.Zero()
-		R0 = c.Select(selector, &AffinePoint[B]{X: *zero, Y: *zero}, R0)
-	}
-
-	return R0
 }
 
-// ScalarMulBase computes s * g and returns it, where g is the fixed generator.
+// scalarMulBaseGeneric computes [s]g and returns it, where g is the fixed generator.
 // It doesn't modify s.
 //
 // ✅ When s=0, it returns (0,0).
@@ -1093,7 +1123,7 @@ func (c *Curve[B, S]) scalarBitsMulGeneric(p *AffinePoint[B], sBits []frontend.V
 //
 // [HMV04]: https://link.springer.com/book/10.1007/b97644
 // [EVM]: https://ethereum.github.io/yellowpaper/paper.pdf
-func (c *Curve[B, S]) ScalarMulBase(s *emulated.Element[S], opts ...algopts.AlgebraOption) *AffinePoint[B] {
+func (c *Curve[B, S]) scalarMulBaseGeneric(s *emulated.Element[S], opts ...algopts.AlgebraOption) *AffinePoint[B] {
 	cfg, err := algopts.NewConfig(opts...)
 	if err != nil {
 		panic(fmt.Sprintf("parse opts: %v", err))
@@ -1132,16 +1162,15 @@ func (c *Curve[B, S]) ScalarMulBase(s *emulated.Element[S], opts ...algopts.Alge
 	return res
 }
 
-// JointScalarMulBase computes s2 * p + s1 * g and returns it, where g is the
+// JointScalarMulBase computes [s1]g + [s2]p and returns it, where g is the
 // fixed generator. It doesn't modify p, s1 and s2.
 //
-// ⚠️   p must NOT be (0,0).
+// ⚠️   p must NOT be (0,0),
+// ⚠️   p must NOT be ±g,
 // ⚠️   s1 and s2 must NOT be 0.
 //
-// It uses the logic from ScalarMul() for s1 * g and the logic from ScalarMulBase() for s2 * g.
-//
-// JointScalarMulBase is used to verify an ECDSA signature (r,s) on the
-// secp256k1 curve. In this case, p is a public key, s2=r/s and s1=hash/s.
+// JointScalarMulBase is used to verify an ECDSA signature (r,s) for example on
+// the secp256k1 curve. In this case, p is a public key, s2=r/s and s1=hash/s.
 //   - hash cannot be 0, because of pre-image resistance.
 //   - r cannot be 0, because r is the x coordinate of a random point on
 //     secp256k1 (y²=x³+7 mod p) and 7 is not a square mod p. For any other
@@ -1150,9 +1179,6 @@ func (c *Curve[B, S]) ScalarMulBase(s *emulated.Element[S], opts ...algopts.Alge
 //
 // The [EVM] specifies these checks, wich are performed on the zkEVM
 // arithmetization side before calling the circuit that uses this method.
-//
-// This saves the Select logic related to (0,0) and the use of AddUnified to
-// handle the 0-scalar edge case.
 func (c *Curve[B, S]) JointScalarMulBase(p *AffinePoint[B], s2, s1 *emulated.Element[S], opts ...algopts.AlgebraOption) *AffinePoint[B] {
 	return c.jointScalarMul(c.Generator(), p, s1, s2, opts...)
 }
@@ -1201,12 +1227,10 @@ func (c *Curve[B, S]) MultiScalarMul(p []*AffinePoint[B], s []*emulated.Element[
 			return nil, fmt.Errorf("need scalar for folding")
 		}
 		gamma := s[0]
-		gamma = c.scalarApi.Reduce(gamma)
-		gammaBits := c.scalarApi.ToBits(gamma)
-		res := c.scalarBitsMulGeneric(p[len(p)-1], gammaBits, opts...)
+		res := c.ScalarMul(p[len(p)-1], gamma, opts...)
 		for i := len(p) - 2; i > 0; i-- {
 			res = addFn(p[i], res)
-			res = c.scalarBitsMulGeneric(res, gammaBits, opts...)
+			res = c.ScalarMul(res, gamma, opts...)
 		}
 		res = addFn(p[0], res)
 		return res, nil
