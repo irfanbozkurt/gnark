@@ -20,131 +20,36 @@ import (
 	curve "github.com/consensys/gnark-crypto/ecc/bls24-315"
 
 	"github.com/consensys/gnark-crypto/ecc/bls24-315/fr"
-
-	"bytes"
-	"github.com/consensys/gnark-crypto/ecc/bls24-315/fr/fft"
-	"github.com/consensys/gnark-crypto/ecc/bls24-315/fr/iop"
-	gnarkio "github.com/consensys/gnark/io"
-	"io"
+	"github.com/consensys/gnark/io"
 	"math/big"
 	"math/rand"
-	"reflect"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestProofSerialization(t *testing.T) {
 	// create a  proof
-	var proof, reconstructed Proof
+	var proof Proof
 	proof.randomize()
 
-	roundTripCheck(t, &proof, &reconstructed)
-}
-
-func TestProofSerializationRaw(t *testing.T) {
-	// create a  proof
-	var proof, reconstructed Proof
-	proof.randomize()
-
-	roundTripCheckRaw(t, &proof, &reconstructed)
+	assert.NoError(t, io.RoundTripCheck(&proof, func() interface{} { return new(Proof) }))
 }
 
 func TestProvingKeySerialization(t *testing.T) {
 	// random pk
-	var pk, reconstructed ProvingKey
+	var pk ProvingKey
 	pk.randomize()
 
-	roundTripCheck(t, &pk, &reconstructed)
-}
-
-func TestProvingKeySerializationRaw(t *testing.T) {
-	// random pk
-	var pk, reconstructed ProvingKey
-	pk.randomize()
-
-	roundTripCheckRaw(t, &pk, &reconstructed)
-}
-
-func TestProvingKeySerializationRawUnsafe(t *testing.T) {
-	// random pk
-	var pk, reconstructed ProvingKey
-	pk.randomize()
-
-	roundTripCheckRawUnsafe(t, &pk, &reconstructed)
+	assert.NoError(t, io.RoundTripCheck(&pk, func() interface{} { return new(ProvingKey) }))
 }
 
 func TestVerifyingKeySerialization(t *testing.T) {
 	// create a random vk
-	var vk, reconstructed VerifyingKey
+	var vk VerifyingKey
 	vk.randomize()
 
-	roundTripCheck(t, &vk, &reconstructed)
-}
-
-func roundTripCheck(t *testing.T, from io.WriterTo, reconstructed io.ReaderFrom) {
-	var buf bytes.Buffer
-	written, err := from.WriteTo(&buf)
-	if err != nil {
-		t.Fatal("couldn't serialize", err)
-	}
-
-	read, err := reconstructed.ReadFrom(&buf)
-	if err != nil {
-		t.Fatal("couldn't deserialize", err)
-	}
-
-	if !reflect.DeepEqual(from, reconstructed) {
-		t.Fatal("reconstructed object don't match original")
-	}
-
-	if written != read {
-		t.Fatal("bytes written / read don't match")
-	}
-}
-
-func roundTripCheckRaw(t *testing.T, from gnarkio.WriterRawTo, reconstructed io.ReaderFrom) {
-	var buf bytes.Buffer
-	written, err := from.WriteRawTo(&buf)
-	if err != nil {
-		t.Fatal("couldn't serialize", err)
-	}
-
-	read, err := reconstructed.ReadFrom(&buf)
-	if err != nil {
-		t.Fatal("couldn't deserialize", err)
-	}
-
-	if !reflect.DeepEqual(from, reconstructed) {
-		t.Fatal("reconstructed object don't match original")
-	}
-
-	if written != read {
-		t.Fatal("bytes written / read don't match")
-	}
-}
-
-type unsafeReaderFrom interface {
-	UnsafeReadFrom(io.Reader) (int64, error)
-}
-
-func roundTripCheckRawUnsafe(t *testing.T, from gnarkio.WriterRawTo, reconstructed unsafeReaderFrom) {
-	var buf bytes.Buffer
-	written, err := from.WriteRawTo(&buf)
-	if err != nil {
-		t.Fatal("couldn't serialize", err)
-	}
-
-	read, err := reconstructed.UnsafeReadFrom(&buf)
-	if err != nil {
-		t.Fatal("couldn't deserialize", err)
-	}
-
-	if !reflect.DeepEqual(from, reconstructed) {
-		t.Fatal("reconstructed object don't match original")
-	}
-
-	if written != read {
-		t.Fatal("bytes written / read don't match")
-	}
+	assert.NoError(t, io.RoundTripCheck(&vk, func() interface{} { return new(VerifyingKey) }))
 }
 
 func (pk *ProvingKey) randomize() {
@@ -152,49 +57,14 @@ func (pk *ProvingKey) randomize() {
 	var vk VerifyingKey
 	vk.randomize()
 	pk.Vk = &vk
-	pk.Domain[0] = *fft.NewDomain(42)
-	pk.Domain[1] = *fft.NewDomain(4 * 42)
 
-	pk.Kzg.G1 = make([]curve.G1Affine, 7)
+	pk.Kzg.G1 = make([]curve.G1Affine, 32)
+	pk.KzgLagrange.G1 = make([]curve.G1Affine, 32)
 	for i := range pk.Kzg.G1 {
 		pk.Kzg.G1[i] = randomG1Point()
+		pk.KzgLagrange.G1[i] = randomG1Point()
 	}
 
-	n := int(pk.Domain[0].Cardinality)
-	ql := randomScalars(n)
-	qr := randomScalars(n)
-	qm := randomScalars(n)
-	qo := randomScalars(n)
-	qk := randomScalars(n)
-	lqk := randomScalars(n)
-	s1 := randomScalars(n)
-	s2 := randomScalars(n)
-	s3 := randomScalars(n)
-
-	canReg := iop.Form{Basis: iop.Canonical, Layout: iop.Regular}
-	pk.trace.Ql = iop.NewPolynomial(&ql, canReg)
-	pk.trace.Qr = iop.NewPolynomial(&qr, canReg)
-	pk.trace.Qm = iop.NewPolynomial(&qm, canReg)
-	pk.trace.Qo = iop.NewPolynomial(&qo, canReg)
-	pk.trace.Qk = iop.NewPolynomial(&qk, canReg)
-	pk.trace.S1 = iop.NewPolynomial(&s1, canReg)
-	pk.trace.S2 = iop.NewPolynomial(&s2, canReg)
-	pk.trace.S3 = iop.NewPolynomial(&s3, canReg)
-
-	pk.trace.Qcp = make([]*iop.Polynomial, rand.Intn(4)) //#nosec G404 weak rng is fine here
-	for i := range pk.trace.Qcp {
-		qcp := randomScalars(rand.Intn(n / 4)) //#nosec G404 weak rng is fine here
-		pk.trace.Qcp[i] = iop.NewPolynomial(&qcp, canReg)
-	}
-
-	pk.trace.S = make([]int64, 3*pk.Domain[0].Cardinality)
-	pk.trace.S[0] = -12
-	pk.trace.S[len(pk.trace.S)-1] = 8888
-
-	lagReg := iop.Form{Basis: iop.Lagrange, Layout: iop.Regular}
-	pk.lQk = iop.NewPolynomial(&lqk, lagReg)
-
-	pk.computeLagrangeCosetPolys()
 }
 
 func (vk *VerifyingKey) randomize() {

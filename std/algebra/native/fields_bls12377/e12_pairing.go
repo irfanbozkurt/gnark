@@ -2,6 +2,20 @@ package fields_bls12377
 
 import "github.com/consensys/gnark/frontend"
 
+// nSquareKarabina2345 repeated compressed cyclotmic square
+func (e *E12) nSquareKarabina2345(api frontend.API, n int) {
+	for i := 0; i < n; i++ {
+		e.CyclotomicSquareKarabina2345(api, *e)
+	}
+}
+
+// nSquareKarabina12345 repeated compressed cyclotmic square
+func (e *E12) nSquareKarabina12345(api frontend.API, n int) {
+	for i := 0; i < n; i++ {
+		e.CyclotomicSquareKarabina12345(api, *e)
+	}
+}
+
 // Square034 squares a sparse element in Fp12
 func (e *E12) Square034(api frontend.API, x E12) *E12 {
 	var c0, c2, c3 E6
@@ -60,8 +74,8 @@ func Mul034By034(api frontend.API, d3, d4, c3, c4 E2) *[5]E2 {
 		Sub(api, x34, x3).
 		Sub(api, x34, x4)
 
-	x00.MulByNonResidue(api, x4).
-		Add(api, x00, one)
+	x00.MulByNonResidue(api, x4)
+	x00.A0 = api.Add(x00.A0, 1)
 
 	return &[5]E2{x00, x3, x34, x03, x04}
 }
@@ -109,30 +123,63 @@ func (e *E12) MulBy01234(api frontend.API, x [5]E2) *E12 {
 	return e
 }
 
-// Expt compute e1**exponent, where the exponent is hardcoded
-// This function is only used for the final expo of the pairing for bls12377, so the exponent is supposed to be hardcoded
-// and on 64 bits.
-func (e *E12) Expt(api frontend.API, e1 E12, exponent uint64) *E12 {
+// ExpX0 compute e1^X0, where X0=9586122913090633729
+func (e *E12) ExpX0(api frontend.API, e1 E12) *E12 {
 
 	res := e1
 
-	res.nSquareCompressed(api, 5)
-	res.Decompress(api, res)
+	res.nSquareKarabina2345(api, 5)
+	res.DecompressKarabina2345(api, res)
 	res.Mul(api, res, e1)
 	x33 := res
-	res.nSquareCompressed(api, 7)
-	res.Decompress(api, res)
+	res.nSquareKarabina2345(api, 7)
+	res.DecompressKarabina2345(api, res)
 	res.Mul(api, res, x33)
-	res.nSquareCompressed(api, 4)
-	res.Decompress(api, res)
+	res.nSquareKarabina2345(api, 4)
+	res.DecompressKarabina2345(api, res)
 	res.Mul(api, res, e1)
 	res.CyclotomicSquare(api, res)
 	res.Mul(api, res, e1)
-	res.nSquareCompressed(api, 46)
-	res.Decompress(api, res)
+	res.nSquareKarabina2345(api, 46)
+	res.DecompressKarabina2345(api, res)
 	res.Mul(api, res, e1)
 
 	*e = res
+
+	return e
+
+}
+
+// ExpX0Minus1Square computes e1^((X0-1)^2), where X0=9586122913090633729
+func (e *E12) ExpX0Minus1Square(api frontend.API, e1 E12) *E12 {
+
+	var t0, t1, t2, t3, res E12
+
+	res = e1
+	res.nSquareKarabina12345(api, 3)
+	res.DecompressKarabina12345(api, res)
+	t0.CyclotomicSquare(api, res)
+	t2.Mul(api, e1, t0)
+	res.Mul(api, res, t2)
+	t0.Mul(api, e1, res)
+	t1.CyclotomicSquare(api, t0)
+	t1.Mul(api, t2, t1)
+	t3 = t1
+	t3.nSquareKarabina2345(api, 7)
+	t3.DecompressKarabina2345(api, t3)
+	t2.Mul(api, t2, t3)
+	t2.nSquareKarabina2345(api, 11)
+	t2.DecompressKarabina2345(api, t2)
+	t1.Mul(api, t1, t2)
+	t0.Mul(api, t0, t1)
+	t0.nSquareKarabina2345(api, 7)
+	t0.DecompressKarabina2345(api, t0)
+	res.Mul(api, res, t0)
+	res.nSquareKarabina12345(api, 3)
+	res.DecompressKarabina12345(api, res)
+	res.Mul(api, e1, res)
+	res.nSquareKarabina2345(api, 92)
+	e.DecompressKarabina2345(api, res)
 
 	return e
 
