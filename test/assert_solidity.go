@@ -15,7 +15,7 @@ import (
 
 type verifyingKey interface {
 	NbPublicWitness() int
-	ExportSolidity(io.Writer) error
+	ExportSolidity(io.Writer, ...backend.VerifierOption) error
 }
 
 // solidityVerification checks that the exported solidity contract can verify the proof
