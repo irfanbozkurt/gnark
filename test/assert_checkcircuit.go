@@ -141,7 +141,7 @@ func (assert *Assert) CheckCircuit(circuit frontend.Circuit, opts ...TestingOpti
 								// check that the proof can be verified by gnark-solidity-checker
 								if _vk, ok := vk.(verifyingKey); ok {
 									assert.Run(func(assert *Assert) {
-										assert.solidityVerification(b, _vk, proof, w.public)
+										assert.solidityVerification(b, _vk, proof, w.public, verifierOpts...)
 									}, "solidity")
 								}
 							}
