@@ -2,15 +2,12 @@ package lzss
 
 import (
 	"github.com/consensys/compress/lzss"
-	hint "github.com/consensys/gnark/constraint/solver"
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/std/compress"
 	"github.com/consensys/gnark/std/compress/internal"
 	"github.com/consensys/gnark/std/compress/internal/plonk"
 	"github.com/consensys/gnark/std/lookup/logderivlookup"
 )
-
-// TODO Provide option for c to be in sizes other than bytes
 
 // Decompress decompresses c into d using dict as the dictionary
 // which must come pre "augmented"
@@ -50,9 +47,9 @@ func Decompress(api frontend.API, c []frontend.Variable, cLength frontend.Variab
 
 	bytes := make([]frontend.Variable, len(c)-sizeHeader+1)
 	copy(bytes, c[sizeHeader:])
-	bytes[len(bytes)-1] = 0                                    // pad with a zero to avoid out of range errors
-	c, bytes = rangeChecker.BreakUpBytesIntoWords(1, bytes...) // from this point on c is in bits
-	cLength = api.Mul(api.Sub(cLength, sizeHeader), 8)         // one constraint; insignificant impact anyway
+	bytes[len(bytes)-1] = 0                            // pad with a zero to avoid out of range errors
+	c, bytes = internal.BytesToBits(api, bytes)        // from this point on c is in bits
+	cLength = api.Mul(api.Sub(cLength, sizeHeader), 8) // one constraint; insignificant impact anyway
 
 	// create a random-access table to be referenced
 	outTable := logderivlookup.New(api)
@@ -176,13 +173,6 @@ func initAddrTable(api frontend.API, bytes, _bits []frontend.Variable, backRefs 
 	}
 
 	return res
-}
-
-func RegisterHints() {
-	hint.RegisterHint(internal.BreakUpBytesIntoBitsHint)
-	hint.RegisterHint(internal.BreakUpBytesIntoCrumbsHint)
-	hint.RegisterHint(internal.BreakUpBytesIntoHalfHint)
-	hint.RegisterHint(compress.UnpackIntoBytesHint)
 }
 
 // options and other auxiliary input

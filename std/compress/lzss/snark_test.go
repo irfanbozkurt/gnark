@@ -41,7 +41,6 @@ func TestPaddedNothingRoundTrip(t *testing.T) {
 		DLength: 0,
 	}
 
-	RegisterHints()
 	test.NewAssert(t).CheckCircuit(circuit, test.WithValidAssignment(assignment), test.WithBackends(backend.PLONK), test.WithCurves(ecc.BLS12_377))
 
 }
@@ -138,7 +137,6 @@ func TestNoCompression(t *testing.T) {
 		DLength: len(d),
 	}
 
-	RegisterHints()
 	test.NewAssert(t).CheckCircuit(circuit, test.WithValidAssignment(assignment), test.WithBackends(backend.PLONK), test.WithCurves(ecc.BLS12_377))
 }
 
@@ -181,7 +179,6 @@ func Test3c2943withHeader(t *testing.T) {
 		DLength: len(d),
 	}
 
-	RegisterHints()
 	test.NewAssert(t).CheckCircuit(circuit, test.WithValidAssignment(assignment), test.WithBackends(backend.PLONK), test.WithCurves(ecc.BLS12_377))
 }
 
@@ -206,7 +203,6 @@ func TestOutBufTooShort(t *testing.T) {
 		ExpectedDLength: -1,
 	}
 
-	RegisterHints()
 	test.NewAssert(t).CheckCircuit(&circuit, test.WithValidAssignment(&assignment), test.WithCurves(ecc.BLS12_377))
 }
 
@@ -321,7 +317,6 @@ func testCompressionRoundTrip(t *testing.T, d, dict []byte, options ...testCompr
 		DLength: len(d),
 	}
 
-	RegisterHints()
 	test.NewAssert(t).CheckCircuit(circuit, test.WithValidAssignment(assignment), test.WithBackends(backend.PLONK), test.WithCurves(ecc.BLS12_377))
 }
 
@@ -379,7 +374,6 @@ func TestNoZeroPaddingOutput(t *testing.T) {
 		D: make([]frontend.Variable, len(assignment.D)),
 	}
 
-	RegisterHints()
 	test.NewAssert(t).CheckCircuit(&circuit, test.WithValidAssignment(&assignment), test.WithBackends(backend.PLONK), test.WithCurves(ecc.BLS12_377))
 }
 

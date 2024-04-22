@@ -9,7 +9,6 @@ import (
 	"github.com/consensys/gnark/frontend/cs/scs"
 	"github.com/consensys/gnark/std/compress"
 	"github.com/consensys/gnark/std/compress/internal"
-	"github.com/consensys/gnark/std/compress/lzss"
 	"github.com/consensys/gnark/std/math/bits"
 	test_vector_utils "github.com/consensys/gnark/std/utils/test_vectors_utils"
 	"github.com/consensys/gnark/test"
@@ -54,7 +53,6 @@ func TestRecombineBytes(t *testing.T) {
 		Recombined: test_vector_utils.ToVariableSlice(recombined),
 	}
 
-	lzss.RegisterHints()
 	test.NewAssert(t).CheckCircuit(&circuit, test.WithValidAssignment(&assignment), test.WithBackends(backend.PLONK), test.WithCurves(ecc.BLS12_377))
 }
 
@@ -63,8 +61,7 @@ type recombineBytesCircuit struct {
 }
 
 func (c *recombineBytesCircuit) Define(api frontend.API) error {
-	r := internal.NewRangeChecker(api)
-	bits, recombined := r.BreakUpBytesIntoWords(1, c.Bytes...)
+	bits, recombined := internal.BytesToBits(api, c.Bytes)
 	if len(bits) != len(c.Bits) {
 		panic("wrong number of bits")
 	}
@@ -128,7 +125,7 @@ func TestBreakUpBytesIntoWordsGains(t *testing.T) {
 	stdNbConstraints := csStd.GetNbConstraints()
 
 	assert.Greater(t, stdNbConstraints-customNbConstraints, 1000000, "custom circuit must save at least 1M constraints")
-	assert.LessOrEqual(t, 100*customNbConstraints/stdNbConstraints, 75, "custom circuit should achieve at least a 25%% reduction in constraints")
+	assert.LessOrEqual(t, 100*customNbConstraints/stdNbConstraints, 75, "custom circuit should achieve at least a 25% reduction in constraints")
 }
 
 type breakUpBytesIntoWordsCircuit struct {
@@ -155,7 +152,6 @@ func (c *breakUpBytesIntoWordsStdCircuit) Define(api frontend.API) error {
 }
 
 func (c *breakUpBytesIntoWordsCustomCircuit) Define(api frontend.API) error {
-	r := internal.NewRangeChecker(api)
-	_, _ = r.BreakUpBytesIntoWords(1, c.Bytes...)
+	_, _ = internal.BytesToBits(api, c.Bytes)
 	return nil
 }

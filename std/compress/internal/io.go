@@ -2,15 +2,14 @@ package internal
 
 import (
 	"errors"
-	hint "github.com/consensys/gnark/constraint/solver"
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/std/compress"
 	"github.com/consensys/gnark/std/compress/internal/plonk"
 	"github.com/consensys/gnark/std/lookup/logderivlookup"
 	"math/big"
+	"slices"
 )
 
-// TODO Use std/rangecheck instead
 type RangeChecker struct {
 	api    frontend.API
 	tables map[uint]*logderivlookup.Table
@@ -66,45 +65,34 @@ func (r *RangeChecker) IsLessThan(bound uint, c frontend.Variable) frontend.Vari
 	return r.api.IsZero(res)
 }
 
-var wordNbBitsToHint = map[int]hint.Hint{1: BreakUpBytesIntoBitsHint, 2: BreakUpBytesIntoCrumbsHint, 4: BreakUpBytesIntoHalfHint}
-
-// BreakUpBytesIntoWords breaks up bytes into words of size wordNbBits
+// BytesToBits breaks up bytes into bits
 // It also returns a Slice of bytes which are a reading of the input byte Slice starting from each of the words, thus a super-Slice of the input
 // It has the side effect of checking that the input does in fact consist of bytes
 // As an example, let the words be bits and the input be the bytes [b₀ b₁ b₂ b₃ b₄ b₅ b₆ b₇], [b₈ b₉ b₁₀ b₁₁ b₁₂ b₁₃ b₁₄ b₁₅]
 // Then the output words are b₀, b₁, b₂, b₃, b₄, b₅, b₆, b₇, b₈, b₉, b₁₀, b₁₁, b₁₂, b₁₃, b₁₄, b₁₅
 // The "recombined" output is the slice {[b₀ b₁ b₂ b₃ b₄ b₅ b₆ b₇], [b₁ b₂ b₃ b₄ b₅ b₆ b₇ b₈], ...}
 // Note that for any i in range we get recombined[8*i] = bytes[i]
-func (r *RangeChecker) BreakUpBytesIntoWords(wordNbBits int, bytes ...frontend.Variable) (words, recombined []frontend.Variable) {
+func BytesToBits(api frontend.API, bytes []frontend.Variable) (bits, recombined []frontend.Variable) {
 
-	wordsPerByte := 8 / wordNbBits
-	if wordsPerByte*wordNbBits != 8 {
-		panic("wordNbBits must be a divisor of 8")
-	}
-
-	// solving: break up bytes into words
-	words = bytes
-	if wordsPerByte != 1 {
-		var err error
-		if words, err = r.api.Compiler().NewHint(wordNbBitsToHint[wordNbBits], wordsPerByte*len(bytes), bytes...); err != nil {
-			panic(err)
-		}
-	}
-
-	// proving: check that words are in range
-	r.AssertLessThan(1<<wordNbBits, words...)
-
-	reader := compress.NewNumReader(r.api, words, 8, wordNbBits) // "fill in" the spaces in between the given bytes
-	recombined = make([]frontend.Variable, len(words))
+	// solving: break up bytes into bits
+	bits = make([]frontend.Variable, 8*len(bytes))
 	for i := range bytes {
-		reader.AssertNextEquals(bytes[i]) // see that the words do recombine to the original bytes; the only real difference between this and the inner loop is a single constraint saved
-		recombined[i*wordsPerByte] = bytes[i]
-		for j := 1; j < wordsPerByte; j++ {
-			recombined[i*wordsPerByte+j] = reader.Next() //
+		b := api.ToBinary(bytes[i], 8)
+		slices.Reverse(b)
+		copy(bits[i*8:], b)
+	}
+
+	reader := compress.NewNumReader(api, bits, 8, 1) // "fill in" the spaces in between the given bytes
+	recombined = make([]frontend.Variable, len(bits))
+	for i := range bytes {
+		reader.AssertNextEquals(bytes[i]) // see that the bits do recombine to the original bytes; the only real difference between this and the inner loop is a single constraint saved
+		recombined[i*8] = bytes[i]
+		for j := 1; j < 8; j++ {
+			recombined[i*8+j] = reader.Next() //
 		}
 	}
 
-	return words, recombined
+	return bits, recombined
 }
 
 func breakUpBytesIntoWords(wordNbBits int, ins, outs []*big.Int) error {
@@ -133,16 +121,4 @@ func breakUpBytesIntoWords(wordNbBits int, ins, outs []*big.Int) error {
 	}
 
 	return nil
-}
-
-func BreakUpBytesIntoBitsHint(_ *big.Int, ins, outs []*big.Int) error {
-	return breakUpBytesIntoWords(1, ins, outs)
-}
-
-func BreakUpBytesIntoCrumbsHint(_ *big.Int, ins, outs []*big.Int) error {
-	return breakUpBytesIntoWords(2, ins, outs)
-}
-
-func BreakUpBytesIntoHalfHint(_ *big.Int, ins, outs []*big.Int) error { // todo find catchy name for 4 bits
-	return breakUpBytesIntoWords(4, ins, outs)
 }
