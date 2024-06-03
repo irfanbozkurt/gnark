@@ -8,7 +8,8 @@ import (
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr"
 	"github.com/consensys/gnark/backend/plonk"
 	bn254plonk "github.com/consensys/gnark/backend/plonk/bn254"
-	"github.com/consensys/gnark/backend/solidity"
+
+	// "github.com/consensys/gnark/backend/solidity"
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/frontend/cs/scs"
 	"github.com/consensys/gnark/test/unsafekzg"
@@ -124,7 +125,7 @@ func main() {
 
 	contract, err := os.Create("../contracts/verifier.sol")
 	checkError(err)
-	err = vk.ExportSolidity(contract, solidity.WithPragmaVerions("0.8.25"))
+	err = vk.ExportSolidity(contract) //, solidity.WithPragmaVerions("0.8.25"))
 	checkError(err)
 	err = contract.Close()
 	checkError(err)
